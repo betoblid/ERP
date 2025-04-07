@@ -3,17 +3,25 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Users, Package, AlertTriangle, Clock, CheckCircle2 } from "lucide-react"
 
+
 export default function Dashboard() {
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between gap-4">
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <div className="flex items-center space-x-2">
-          <Badge variant="outline" className="text-sm">
-            Hoje: {new Date().toLocaleDateString("pt-BR")}
-          </Badge>
-        </div>
-      </div>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+  <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+  <div className="flex items-center gap-2">
+    <Badge variant="outline" className="text-sm">
+      Hoje: {new Date().toLocaleDateString("pt-BR")}
+    </Badge>
+    <a
+      href="/ordens-de-servico"
+      className="bg-blue-600 text-white text-sm px-4 py-2 rounded hover:bg-blue-700"
+    >
+      Criar Ordem de Serviço
+    </a>
+  </div>
+  </div>
+      
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card>
@@ -21,6 +29,7 @@ export default function Dashboard() {
             <CardTitle className="text-sm font-medium">Ordens de Serviço</CardTitle>
             <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
+          
           <CardContent>
             <div className="text-2xl font-bold">24</div>
             <p className="text-xs text-muted-foreground">+5 desde ontem</p>

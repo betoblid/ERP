@@ -1,11 +1,11 @@
-"use client"
+"use client";
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useToast } from "@/hooks/use-toast"
+
 import { Barcode, Camera, Check, X } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
@@ -17,7 +17,9 @@ const produtos = [
 ]
 
 export default function RetiradaPage() {
-  const { toast } = useToast()
+  
+
+ 
   const [codigo, setCodigo] = useState("")
   const [os, setOs] = useState("")
   const [scanMode, setScanMode] = useState(false)
@@ -40,13 +42,7 @@ export default function RetiradaPage() {
 
   const verificarProduto = () => {
     if (!codigo || !os) {
-      toast({
-        title: "Campos obrigatórios",
-        description: "Preencha o código do produto e o número da OS",
-        variant: "destructive",
-      })
-      return
-    }
+     
 
     const produtoEncontrado = produtos.find((p) => p.codigo === codigo)
 
@@ -75,10 +71,7 @@ export default function RetiradaPage() {
 
   const confirmarRetirada = () => {
     if (resultado?.status === "success") {
-      toast({
-        title: "Retirada confirmada",
-        description: `${resultado.produto?.nome} foi retirado com sucesso.`,
-      })
+      
 
       // Limpar o formulário
       setCodigo("")
@@ -161,5 +154,4 @@ export default function RetiradaPage() {
       </Card>
     </div>
   )
-}
-
+}}
