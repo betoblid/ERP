@@ -11,13 +11,15 @@ export default function CriarOrdemDeServico() {
   const [produto, setProduto] = useState("");
   const [pontoRetirada, setPontoRetirada] = useState("estoque");
   const [quantidade, setQuantidade] = useState(1);
+  const [endereco, setEndereco] = useState("")
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
     const ordem = {
       cliente,
-      produto,
+      endereco,
+      produto,      
       pontoRetirada,
       quantidade,
     };
@@ -44,7 +46,16 @@ export default function CriarOrdemDeServico() {
             ))}
           </select>
         </div>
-
+        <div>
+          <label className="block font-medium mb-1">Endereco</label>
+          <input
+            type="text"
+            onChange={(e) => setEndereco(e.target.value)}
+            className="w-full border border-gray-300 px-3 py-2 rounded"
+            required>
+            
+          </input>
+        </div>
         <div>
           <label className="block font-medium mb-1">Produto</label>
           <select
