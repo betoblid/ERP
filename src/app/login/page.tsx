@@ -1,122 +1,124 @@
-"use client"
-
-import type React from "react"
+'use client'
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { useToast } from "@/hooks/use-toast"
-import { Package2, Lock } from "lucide-react"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+import { FiUser, FiLock } from "react-icons/fi"
+import api from "@/lib/api"
+import { setToken, setUser } from "@/lib/auth"
+import type { AuthResponse } from "@/@types"
+import { toast } from "sonner"
+import { useRouter, useSearchParams } from "next/navigation"
 
-export default function LoginPage() {
+
+const loginSchema = z.object({
+  email: z.string().email("Email inválido"),
+  password: z.string().min(6, "A senha deve ter pelo menos 6 caracteres"),
+})
+
+type LoginFormData = z.infer<typeof loginSchema>
+
+export default function Login() {
   const router = useRouter()
-  const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
-  const [formData, setFormData] = useState({
-    email: "",
-    password: "",
+  const searchParams = useSearchParams()
+  const from = searchParams.get("from") //capturado URL
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
   })
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const onSubmit = async (data: LoginFormData) => {
     setIsLoading(true)
-
     try {
-      // Simulando autenticação
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      const response = await api.post("login", data)
+      const { token, user } = response.data
 
-      // Credenciais de exemplo
-      if (formData.email === "admin@exemplo.com" && formData.password === "senha123") {
-        toast({
-          title: "Login realizado com sucesso!",
-          description: "Bem-vindo ao sistema ERP.",
-        })
+      // salvar token e user data
+      setToken(token)
+      setUser(user)
 
-        router.push("/")
-      } else {
-        toast({
-          title: "Erro de autenticação",
-          description: "E-mail ou senha incorretos. Tente novamente.",
-          variant: "destructive",
-        })
-      }
-    } catch (error) {
-      toast({
-        title: "Erro ao fazer login",
-        description: "Ocorreu um erro ao processar sua solicitação. Tente novamente.",
-        variant: "destructive",
-      })
+      // Set token in cookie for middleware
+      document.cookie = `token=${token}; path=/; max-age=${60 * 60 * 24 * 7}` // 7 days
+   
+      toast.success("Login realizado com sucesso!")
+
+      // Redirect to the page the user was trying to access or to the dashboard
+      router.push(from ? String(from) : "/")
+
+    } catch (error: any) {
+
+      toast.error(error.response?.data?.message || "Erro ao fazer login")
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <div className="flex h-screen w-full items-center justify-center bg-gray-100">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
-          <div className="flex items-center justify-center mb-4">
-            <div className="rounded-full bg-primary p-2">
-              <Package2 className="h-6 w-6 text-white" />
+    <div className="min-h-screen flex items-center justify-center bg-gray-300 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8 bg-gray-100 p-8 rounded-lg shadow-md">
+        <div>
+          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">ERP System</h2>
+          <p className="mt-2 text-center text-sm text-gray-600">Entre com suas credenciais para acessar o sistema</p>
+        </div>
+        <form className="mt-8 space-y-6" onSubmit={handleSubmit(onSubmit)}>
+          <div className="rounded-md shadow-sm -space-y-px">
+            <div className="form-group">
+              <label htmlFor="email" className="form-label text-gray-900">
+                Email
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <FiUser className="h-5 w-5 text-gray-400" />
+                </div>
+                <input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  className="form-input pl-10 text-gray-950 bg-slate-200 border-gray-500 border-2 rounded-md w-full py-2"
+                  placeholder="Email"
+                  {...register("email")}
+                />
+              </div>
+              {errors.email && <p className="form-error">{errors.email.message}</p>}
+            </div>
+            <div className="form-group">
+              <label htmlFor="password" className="form-label text-gray-900">
+                Senha
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <FiLock className="h-5 w-5 text-gray-400" />
+                </div>
+                <input
+                  id="password"
+                  type="password"
+                  autoComplete="current-password"
+                  className="form-input pl-10 text-gray-950 bg-slate-200 border-gray-500 border-2 rounded-md w-full py-2"
+                  placeholder="Senha"
+                  {...register("password")}
+                />
+              </div>
+              {errors.password && <p className="form-error">{errors.password.message}</p>}
             </div>
           </div>
-          <CardTitle className="text-2xl text-center">ERP System</CardTitle>
-          <CardDescription className="text-center">Entre com suas credenciais para acessar o sistema</CardDescription>
-        </CardHeader>
-        <form onSubmit={handleSubmit}>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">E-mail</Label>
-              <Input
-                id="email"
-                name="email"
-                type="email"
-                placeholder="seu@email.com"
-                value={formData.email}
-                onChange={handleChange}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password">Senha</Label>
-                <a href="#" className="text-sm text-primary hover:underline">
-                  Esqueceu a senha?
-                </a>
-              </div>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                placeholder="••••••••"
-                value={formData.password}
-                onChange={handleChange}
-                required
-              />
-            </div>
-          </CardContent>
-          <CardFooter>
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? (
-                "Entrando..."
-              ) : (
-                <>
-                  <Lock className="mr-2 h-4 w-4" />
-                  Entrar
-                </>
-              )}
-            </Button>
-          </CardFooter>
+
+          <div>
+            <button
+              type="submit"
+              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              disabled={isLoading}
+            >
+              {isLoading ? "Entrando..." : "Entrar"}
+            </button>
+          </div>
         </form>
-      </Card>
+      </div>
     </div>
   )
 }
