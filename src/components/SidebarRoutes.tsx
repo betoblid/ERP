@@ -11,7 +11,7 @@ import {
 import Link from "next/link"
 import { ChevronDown, ChevronUp } from "lucide-react"
 import { useState } from "react"
-import { Home, Users, Package, Truck, UserCircle, LogOut, MapPin, Clock, Calendar, BarChart4 } from "lucide-react"
+import { Home, Users, Package, Truck, UserCircle, LogOut, Clock, Calendar, BarChart4 } from "lucide-react"
 
 const routes = [
   {
@@ -56,7 +56,21 @@ const routes = [
     label: "Orden de Serviço",
     icon: Truck,
     href: "/ordens-de-servico",
-    color: "text-blue-500"
+    color: "text-blue-500",
+    sub: [
+      {
+        label: "Pedido",
+        href: "/pedido",
+      },
+      {
+        label: "Novo Pedido",
+        href: "/pedido/cadastro",
+      },
+      {
+        label: "Entregas",
+        href: "/entregas",
+      },
+    ]
   },
   {
     label: "Clientes",
@@ -73,18 +87,6 @@ const routes = [
           href: "/clientes/cadastro",
         },
       ]
-  },
-  {
-    label: "Retirada",
-    icon: LogOut,
-    href: "/retirada",
-    color: "text-emerald-500",
-  },
-  {
-    label: "Check-in/out",
-    icon: MapPin,
-    href: "/checkin",
-    color: "text-green-700",
   },
   {
     label: "Ponto",

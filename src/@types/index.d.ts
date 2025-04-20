@@ -39,6 +39,26 @@ export interface User {
     categoriaId: number
     categoria: Categoria
   }
+
+  export interface OrdemServico {
+    id: string
+    titulo: string
+    cliente: {
+      id: number
+      nome: string
+    }
+    localExecucao: string
+    dataAbertura: Date
+    dataAgendado: Date
+    horarioExecucao: string
+    status: "aberta" | "andamento" | "finalizada"
+    funcionario: {
+      id: number
+      nome: string
+    }
+    descricao?: string
+  }
+  
   
   export interface Categoria {
     id: number
@@ -67,6 +87,21 @@ export interface User {
     user: User
   }
   
+  export interface Ocorrencia {
+    id: number;
+    tipo: "entrega" | "retirada"; // restrito aos dois tipos conhecidos
+    recebidoPor: string;
+    data: string; // ISO date string
+    horario: string; // "HH:mm"
+    local: string;
+    observacao?: string; // campo opcional
+    status: "finalizado" | "pendente" | string; // pode adicionar outros status se houver
+    pedidoId: number;
+    funcionarioId: number;
+    createdAt: string; // ISO date string
+    updatedAt: string; // ISO date string
+  }
+  
   
   export interface Pedido {
     id: number
@@ -75,6 +110,7 @@ export interface User {
     horario: string
     endereco: string
     cliente: {
+      id: number
       nome: string
       documento: string
       telefone: string
@@ -89,4 +125,5 @@ export interface User {
         fornecedor: string
       }
     }[]
+    ocorrencias: Ocorrencia[]
   }

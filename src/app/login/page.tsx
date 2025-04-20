@@ -1,5 +1,5 @@
 'use client'
-
+import React, { Suspense } from "react"
 import { useState } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -7,7 +7,6 @@ import { z } from "zod"
 import { FiUser, FiLock } from "react-icons/fi"
 import api from "@/lib/api"
 import { setToken, setUser } from "@/lib/auth"
-import type { AuthResponse } from "@/@types"
 import { toast } from "sonner"
 import { useRouter, useSearchParams } from "next/navigation"
 
@@ -60,6 +59,7 @@ export default function Login() {
   }
 
   return (
+    <Suspense fallback={<div>Carregando...</div>}>
     <div className="min-h-screen flex items-center justify-center bg-gray-300 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8 bg-gray-100 p-8 rounded-lg shadow-md">
         <div>
@@ -120,6 +120,7 @@ export default function Login() {
         </form>
       </div>
     </div>
+  </Suspense>
   )
 }
 
