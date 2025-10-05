@@ -1,15 +1,17 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, RefreshCw, CheckCircle, XCircle, ExternalLink } from "lucide-react"
+import { Loader2, RefreshCw, CheckCircle, XCircle, ExternalLink, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 export default function QuickBooksConfigPage() {
+  const searchParams = useSearchParams()
   const [isLoading, setIsLoading] = useState(true)
   const [isSyncing, setIsSyncing] = useState(false)
   const [config, setConfig] = useState<any>(null)
@@ -18,7 +20,21 @@ export default function QuickBooksConfigPage() {
   useEffect(() => {
     loadConfig()
     loadSyncLogs()
-  }, [])
+
+    // Check for OAuth callback results
+    if (searchParams.get("success") === "true") {
+      toast.success("QuickBooks conectado com sucesso!")
+      loadConfig()
+    } else if (searchParams.get("error")) {
+      const errorType = searchParams.get("error")
+      const errorMessages: Record<string, string> = {
+        auth_failed: "Falha na autenticação. Tente novamente.",
+        missing_params: "Parâmetros ausentes na resposta do QuickBooks.",
+        true: "Erro ao conectar com QuickBooks. Verifique suas credenciais.",
+      }
+      toast.error(errorMessages[errorType] || "Erro desconhecido")
+    }
+  }, [searchParams])
 
   const loadConfig = async () => {
     try {
@@ -52,8 +68,14 @@ export default function QuickBooksConfigPage() {
     const scope = "com.intuit.quickbooks.accounting"
     const state = Math.random().toString(36).substring(7)
 
+    if (!clientId) {
+      toast.error("QUICKBOOKS_CLIENT_ID não está configurado")
+      return
+    }
+
     const authUrl = `https://appcenter.intuit.com/connect/oauth2?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&response_type=code&state=${state}`
 
+    console.log("Redirecting to QuickBooks OAuth:", authUrl)
     window.location.href = authUrl
   }
 
@@ -70,14 +92,17 @@ export default function QuickBooksConfigPage() {
       })
 
       if (response.ok) {
+        const result = await response.json()
         toast.success("Sincronização concluída com sucesso")
+        console.log("Sync result:", result)
         loadSyncLogs()
       } else {
-        throw new Error("Sync failed")
+        const error = await response.json()
+        throw new Error(error.error || "Sync failed")
       }
     } catch (error) {
       console.error("Sync error:", error)
-      toast.error("Erro ao sincronizar com QuickBooks")
+      toast.error(error instanceof Error ? error.message : "Erro ao sincronizar com QuickBooks")
     } finally {
       setIsSyncing(false)
     }
@@ -102,6 +127,17 @@ export default function QuickBooksConfigPage() {
       />
 
       <div className="mt-6 space-y-6">
+        {!process.env.NEXT_PUBLIC_QUICKBOOKS_CLIENT_ID && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Configuração Necessária</AlertTitle>
+            <AlertDescription>
+              As variáveis de ambiente do QuickBooks não estão configuradas. Configure QUICKBOOKS_CLIENT_ID,
+              QUICKBOOKS_CLIENT_SECRET e QUICKBOOKS_REDIRECT_URI no arquivo .env
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Card>
           <CardHeader>
             <CardTitle>Status da Integração</CardTitle>
@@ -153,7 +189,7 @@ export default function QuickBooksConfigPage() {
                     Você precisa conectar sua conta QuickBooks para usar os recursos de integração financeira.
                   </AlertDescription>
                 </Alert>
-                <Button onClick={handleConnect}>
+                <Button onClick={handleConnect} disabled={!process.env.NEXT_PUBLIC_QUICKBOOKS_CLIENT_ID}>
                   <ExternalLink className="mr-2 h-4 w-4" />
                   Conectar QuickBooks
                 </Button>

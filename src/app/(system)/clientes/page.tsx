@@ -8,7 +8,7 @@ import Link from "next/link"
 const GetClientAll = async (): Promise<Cliente[]> => {
   const cookiesStore = await cookies()
   const token = cookiesStore.get("token")?.value
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}clientes`, {
+  const response = await fetch(`${process.env.NEXT_PUBLIC_URL_API}clientes`, {
     headers: {
       Authorization: `Bearer ${token}`
     }

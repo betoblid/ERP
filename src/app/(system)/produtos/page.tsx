@@ -10,7 +10,7 @@ import { Produto } from "@/@types"
 const getProductsAll = async (): Promise<Produto[]> => {
 
   const token = await getCookies()
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}produto`, {
+  const response = await fetch(`${process.env.NEXT_PUBLIC_URL_API}produto`, {
     headers: {
       Authorization: `Bearer ${token}`
     }

@@ -1,5 +1,4 @@
 import axios, { type AxiosInstance } from "axios"
-import type { QuickBooksToken } from "@/@types"
 
 export class QuickBooksClient {
   private client: AxiosInstance
@@ -19,8 +18,13 @@ export class QuickBooksClient {
     this.refreshToken = config.refreshToken
     this.tokenExpiresAt = new Date(Date.now() + config.expiresIn * 1000)
 
+    const baseURL =
+      process.env.QUICKBOOKS_ENVIRONMENT === "production"
+        ? "https://quickbooks.api.intuit.com"
+        : "https://sandbox-quickbooks.api.intuit.com"
+
     this.client = axios.create({
-      baseURL: process.env.QUICKBOOKS_API_URL || "https://sandbox-quickbooks.api.intuit.com",
+      baseURL,
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
@@ -63,29 +67,22 @@ export class QuickBooksClient {
       this.refreshToken = response.data.refresh_token
       this.tokenExpiresAt = new Date(Date.now() + response.data.expires_in * 1000)
 
-      // Save updated tokens to database
-      await this.saveTokens({
-        access_token: this.accessToken,
-        refresh_token: this.refreshToken,
-        expires_in: response.data.expires_in,
-        x_refresh_token_expires_in: response.data.x_refresh_token_expires_in,
-        token_type: response.data.token_type,
-        realmId: this.realmId,
+      // Save updated tokens
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/quickbooks/tokens`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          realmId: this.realmId,
+          access_token: this.accessToken,
+          refresh_token: this.refreshToken,
+          expires_in: response.data.expires_in,
+          x_refresh_token_expires_in: response.data.x_refresh_token_expires_in,
+        }),
       })
     } catch (error) {
       console.error("Failed to refresh QuickBooks token:", error)
       throw new Error("Failed to refresh QuickBooks access token")
     }
-  }
-
-  private async saveTokens(tokens: QuickBooksToken) {
-    // Implement saving tokens to database
-    // This should be implemented based on your database structure
-    await fetch("/api/quickbooks/tokens", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(tokens),
-    })
   }
 
   async get<T>(endpoint: string, params?: any): Promise<T> {
@@ -96,15 +93,6 @@ export class QuickBooksClient {
   async post<T>(endpoint: string, data: any): Promise<T> {
     const response = await this.client.post(`/v3/company/${this.realmId}${endpoint}`, data)
     return response.data
-  }
-
-  async put<T>(endpoint: string, data: any): Promise<T> {
-    const response = await this.client.post(`/v3/company/${this.realmId}${endpoint}?operation=update`, data)
-    return response.data
-  }
-
-  async delete(endpoint: string): Promise<void> {
-    await this.client.post(`/v3/company/${this.realmId}${endpoint}?operation=delete`)
   }
 
   async query<T>(queryString: string): Promise<T[]> {

@@ -1,54 +1,74 @@
-import { type NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server"
+import axios from "axios"
 
 export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams;
-  const code = searchParams.get("code");
-  const state = searchParams.get("state");
-  const realmId = searchParams.get("realmId");
-
-  // TODO: valide 'state' com o valor salvo em cookie/session p/ evitar CSRF
-  if (!code || !realmId) {
-    return NextResponse.json({ error: "Missing required parameters" }, { status: 400 });
-  }
-
-  const clientId = process.env.QUICKBOOKS_CLIENT_ID!;
-  const clientSecret = process.env.QUICKBOOKS_CLIENT_SECRET!;
-  const redirectUri = process.env.QUICKBOOKS_REDIRECT_URI || "http://localhost:3000/api/quickbooks/auth";
-
   try {
-    const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+    const searchParams = request.nextUrl.searchParams
+    const code = searchParams.get("code")
+    const state = searchParams.get("state")
+    const realmId = searchParams.get("realmId")
+    const error = searchParams.get("error")
 
-    // Troca do authorization code por tokens
-    const tokenResponse = await fetch("https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer", {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/x-www-form-urlencoded",
-        Authorization: `Basic ${basic}`,
-      },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        code,
-        redirect_uri: redirectUri, // DEVE ser idêntico ao usado na autorização e ao cadastrado no portal
-      }),
-    });
-
-    if (!tokenResponse.ok) {
-      const txt = await tokenResponse.text();
-      console.error("QB token error:", tokenResponse.status, txt);
-      throw new Error("Failed to exchange authorization code");
+    // Handle OAuth errors
+    if (error) {
+      console.error("QuickBooks OAuth error:", error)
+      return NextResponse.redirect(new URL(`/configuracoes/quickbooks?error=auth_failed`, request.url))
     }
 
-    const tokens = await tokenResponse.json();
+    // Validate required parameters
+    if (!code || !realmId) {
+      console.error("Missing code or realmId")
+      return NextResponse.redirect(new URL(`/configuracoes/quickbooks?error=missing_params`, request.url))
+    }
 
-    // Salve tokens no seu DB (não chame http para você mesmo se já está no server)
-    // Exemplo:
-    // await db.quickbooksConnection.upsert({ realmId, ...tokens });
+    console.log("Exchanging code for tokens...")
 
-    // Se quiser manter, prefira URL absoluta baseada no request
-    return NextResponse.redirect(new URL("/configuracoes/quickbooks?success=true", request.url));
-  } catch (err) {
-    console.error("QuickBooks auth error:", err);
-    return NextResponse.redirect(new URL("/configuracoes/quickbooks?error=true", request.url));
+    // Exchange authorization code for tokens
+    const tokenResponse = await axios.post(
+      "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
+      new URLSearchParams({
+        grant_type: "authorization_code",
+        code: code,
+        redirect_uri: process.env.QUICKBOOKS_REDIRECT_URI || `${process.env.NEXT_PUBLIC_API_URL}/api/quickbooks/auth`,
+      }),
+      {
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
+          Authorization: `Basic ${Buffer.from(
+            `${process.env.QUICKBOOKS_CLIENT_ID}:${process.env.QUICKBOOKS_CLIENT_SECRET}`,
+          ).toString("base64")}`,
+        },
+      },
+    )
+
+    console.log("Tokens received successfully")
+
+    // Save tokens to database
+    const saveResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/quickbooks/tokens`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        realmId: realmId,
+        access_token: tokenResponse.data.access_token,
+        refresh_token: tokenResponse.data.refresh_token,
+        expires_in: tokenResponse.data.expires_in,
+        x_refresh_token_expires_in: tokenResponse.data.x_refresh_token_expires_in,
+      }),
+    })
+
+    if (!saveResponse.ok) {
+      throw new Error("Failed to save tokens")
+    }
+
+    console.log("Tokens saved to database")
+
+    // Redirect to success page
+    return NextResponse.redirect(new URL("/configuracoes/quickbooks?success=true", request.url))
+  } catch (error) {
+    console.error("QuickBooks OAuth error:", error)
+    return NextResponse.redirect(new URL(`/configuracoes/quickbooks?error=true`, request.url))
   }
 }

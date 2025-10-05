@@ -7,54 +7,20 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Usuario {
-  id        Int      @id @default(autoincrement())
-  nome      String
-  email     String   @unique
-  senha     String
-  role      String   @default("user")
-  ativo     Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("usuarios")
-}
-
-model Funcionario {
-  id                Int       @id @default(autoincrement())
-  nome              String
-  email             String    @unique
-  telefone          String
-  cargo             String
-  dataAdmissao      DateTime
-  salario           Decimal   @db.Decimal(10, 2)
-  ativo             Boolean   @default(true)
-  cpf               String    @unique
-  endereco          String
-  dataNascimento    DateTime?
-  departamento      String?
-  registrosPonto    RegistroPonto[]
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-
-  @@map("funcionarios")
-}
-
 model Cliente {
-  id            Int       @id @default(autoincrement())
-  nome          String
-  email         String
-  telefone      String
-  endereco      String
-  documento     String    @unique
-  tipoDocumento String
-  ativo         Boolean   @default(true)
-  quickbooksId  String?   @unique
-  syncedAt      DateTime?
-  syncStatus    String    @default("pending")
-  pedidos       Pedido[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id             Int       @id @default(autoincrement())
+  nome           String
+  email          String    @unique
+  telefone       String
+  endereco       String
+  tipoDocumento  String    @map("tipo_documento")
+  documento      String    @unique
+  quickbooksId   String?   @map("quickbooks_id")
+  syncedAt       DateTime? @map("synced_at")
+  syncStatus     String?   @default("pending") @map("sync_status")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  pedidos        Pedido[]
 
   @@map("clientes")
 }
@@ -62,122 +28,100 @@ model Cliente {
 model Categoria {
   id        Int       @id @default(autoincrement())
   nome      String    @unique
-  descricao String?
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
   produtos  Produto[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
 
   @@map("categorias")
 }
 
 model Produto {
-  id            Int          @id @default(autoincrement())
-  nome          String
-  codigo        String       @unique
-  descricao     String?
-  preco         Decimal      @db.Decimal(10, 2)
-  estoque       Int
-  estoqueAtual  Int
-  categoriaId   Int
-  categoria     Categoria    @relation(fields: [categoriaId], references: [id])
-  ativo         Boolean      @default(true)
-  quickbooksId  String?      @unique
-  syncedAt      DateTime?
-  syncStatus    String       @default("pending")
-  itens         PedidoItem[]
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  id             Int          @id @default(autoincrement())
+  nome           String
+  descricao      String?
+  preco          Float
+  estoqueAtual   Int          @default(0) @map("estoque_atual")
+  estoqueMinimo  Int          @default(0) @map("estoque_minimo")
+  categoriaId    Int          @map("categoria_id")
+  quickbooksId   String?      @map("quickbooks_id")
+  syncedAt       DateTime?    @map("synced_at")
+  syncStatus     String?      @default("pending") @map("sync_status")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  categoria      Categoria    @relation(fields: [categoriaId], references: [id])
+  itensPedido    ItemPedido[]
 
   @@map("produtos")
 }
 
 model Pedido {
-  id           Int          @id @default(autoincrement())
-  numero       String       @unique
-  clienteId    Int
-  cliente      Cliente      @relation(fields: [clienteId], references: [id])
-  data         DateTime
-  horario      String
-  endereco     String
-  observacao   String?
-  status       String       @default("agendado")
-  valorTotal   Decimal      @db.Decimal(10, 2) @default(0)
-  quickbooksId String?      @unique
-  syncedAt     DateTime?
-  syncStatus   String       @default("pending")
-  itens        PedidoItem[]
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  id             Int          @id @default(autoincrement())
+  clienteId      Int          @map("cliente_id")
+  status         String       @default("agendado")
+  data           DateTime
+  horario        String
+  endereco       String
+  observacao     String?
+  quickbooksId   String?      @map("quickbooks_id")
+  syncedAt       DateTime?    @map("synced_at")
+  syncStatus     String?      @default("pending") @map("sync_status")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  cliente        Cliente      @relation(fields: [clienteId], references: [id])
+  itens          ItemPedido[]
 
   @@map("pedidos")
 }
 
-model PedidoItem {
+model ItemPedido {
   id            Int      @id @default(autoincrement())
-  pedidoId      Int
-  pedido        Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
-  produtoId     Int
-  produto       Produto  @relation(fields: [produtoId], references: [id])
+  pedidoId      Int      @map("pedido_id")
+  produtoId     Int      @map("produto_id")
   quantidade    Int
-  precoUnitario Decimal  @db.Decimal(10, 2)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  precoUnitario Float    @map("preco_unitario")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  pedido        Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  produto       Produto  @relation(fields: [produtoId], references: [id])
 
-  @@map("pedido_itens")
+  @@map("itens_pedido")
 }
 
-model RegistroPonto {
-  id            Int         @id @default(autoincrement())
-  funcionarioId Int
-  funcionario   Funcionario @relation(fields: [funcionarioId], references: [id])
-  data          DateTime
-  horaEntrada   String
-  horaSaida     String?
-  observacao    String?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+model Funcionario {
+  id        Int      @id @default(autoincrement())
+  nome      String
+  email     String   @unique
+  telefone  String
+  cargo     String
+  salario   Float
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@map("registros_ponto")
-}
-
-model OrdemServico {
-  id          Int      @id @default(autoincrement())
-  clienteId   Int
-  titulo      String
-  descricao   String
-  status      String   @default("pendente")
-  prioridade  String   @default("media")
-  dataInicio  DateTime
-  dataFim     DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@map("ordens_servico")
+  @@map("funcionarios")
 }
 
 model QuickBooksConfig {
   id                      Int      @id @default(autoincrement())
-  realmId                 String   @unique
-  accessToken             String
-  refreshToken            String
-  expiresAt               DateTime
-  refreshTokenExpiresAt   DateTime
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  realmId                 String   @unique @map("realm_id")
+  accessToken             String   @map("access_token")
+  refreshToken            String   @map("refresh_token")
+  expiresAt               DateTime @map("expires_at")
+  refreshTokenExpiresAt   DateTime @map("refresh_token_expires_at")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
 
   @@map("quickbooks_config")
 }
 
 model SyncLog {
-  id           Int      @id @default(autoincrement())
-  entityType   String
-  entityId     Int
-  action       String
-  status       String
-  quickbooksId String?
-  errorMessage String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            Int      @id @default(autoincrement())
+  entityType    String   @map("entity_type")
+  entityId      Int      @map("entity_id")
+  action        String
+  status        String
+  quickbooksId  String?  @map("quickbooks_id")
+  errorMessage  String?  @map("error_message")
+  createdAt     DateTime @default(now()) @map("created_at")
 
   @@map("sync_logs")
 }

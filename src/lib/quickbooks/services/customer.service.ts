@@ -1,18 +1,14 @@
 import type { QuickBooksClient } from "../client"
-import type { Cliente, QuickBooksCustomer } from "@/@types"
+import type { Cliente } from "@prisma/client"
 
 export class CustomerService {
   constructor(private client: QuickBooksClient) {}
 
-  async createCustomer(cliente: Cliente): Promise<QuickBooksCustomer> {
+  async createCustomer(cliente: Cliente) {
     const customerData = {
       DisplayName: cliente.nome,
-      PrimaryEmailAddr: {
-        Address: cliente.email,
-      },
-      PrimaryPhone: {
-        FreeFormNumber: cliente.telefone,
-      },
+      PrimaryEmailAddr: { Address: cliente.email },
+      PrimaryPhone: { FreeFormNumber: cliente.telefone },
       BillAddr: {
         Line1: cliente.endereco,
       },
@@ -21,51 +17,28 @@ export class CustomerService {
       FamilyName: cliente.nome.split(" ").slice(1).join(" "),
     }
 
-    const response = await this.client.post<{ Customer: QuickBooksCustomer }>("/customer", customerData)
-
-    return response.Customer
+    return this.client.post("/customer", customerData)
   }
 
-  async updateCustomer(quickbooksId: string, cliente: Cliente, syncToken: string): Promise<QuickBooksCustomer> {
+  async updateCustomer(quickbooksId: string, cliente: Cliente) {
+    // First, get the current customer to get the SyncToken
+    const currentCustomer: any = await this.client.get(`/customer/${quickbooksId}`)
+
     const customerData = {
-      Id: quickbooksId,
-      SyncToken: syncToken,
+      ...currentCustomer.Customer,
       DisplayName: cliente.nome,
-      PrimaryEmailAddr: {
-        Address: cliente.email,
-      },
-      PrimaryPhone: {
-        FreeFormNumber: cliente.telefone,
-      },
+      PrimaryEmailAddr: { Address: cliente.email },
+      PrimaryPhone: { FreeFormNumber: cliente.telefone },
       BillAddr: {
         Line1: cliente.endereco,
       },
       sparse: true,
     }
 
-    const response = await this.client.post<{ Customer: QuickBooksCustomer }>("/customer", customerData)
-
-    return response.Customer
+    return this.client.post(`/customer?operation=update`, customerData)
   }
 
-  async getCustomer(quickbooksId: string): Promise<QuickBooksCustomer> {
-    const response = await this.client.get<{ Customer: QuickBooksCustomer }>(`/customer/${quickbooksId}`)
-    return response.Customer
-  }
-
-  async queryCustomers(filter?: string): Promise<QuickBooksCustomer[]> {
-    let query = "SELECT * FROM Customer"
-    if (filter) {
-      query += ` WHERE ${filter}`
-    }
-    return await this.client.query<QuickBooksCustomer>(query)
-  }
-
-  async deleteCustomer(quickbooksId: string, syncToken: string): Promise<void> {
-    await this.client.post("/customer", {
-      Id: quickbooksId,
-      SyncToken: syncToken,
-      Active: false,
-    })
+  async getCustomer(quickbooksId: string) {
+    return this.client.get(`/customer/${quickbooksId}`)
   }
 }

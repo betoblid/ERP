@@ -8,7 +8,7 @@ import { SidebarRoutes } from "./SidebarRoutes" // <-- componente client-side no
 
 export const GetUser = async (): Promise<User> => {
   const token = await getCookies()
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}me`, {
+  const response = await fetch(`${process.env.NEXT_PUBLIC_URL_API}me`, {
     method: "GET",
     headers: {
       authorization: `Bearer ${token}`,

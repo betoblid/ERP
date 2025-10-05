@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server"
 import { PrismaClient } from "@prisma/client"
-import { QuickBooksClient } from "@/lib/quickbooks/client"
-import { SyncManager } from "@/lib/quickbooks/sync-manager"
+import { QuickBooksSyncManager } from "@/lib/quickbooks/sync-manager"
 
 const prisma = new PrismaClient()
 
 export async function POST(request: Request) {
   try {
     const { entityType, entityId } = await request.json()
+
+    console.log(`Starting sync for ${entityType}...`)
 
     // Get QuickBooks config
     const config = await prisma.quickBooksConfig.findFirst({
@@ -18,92 +19,41 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "QuickBooks not configured" }, { status: 400 })
     }
 
-    // Create QuickBooks client
-    const client = new QuickBooksClient({
+    // Initialize sync manager
+    const syncManager = new QuickBooksSyncManager({
       realmId: config.realmId,
       accessToken: config.accessToken,
       refreshToken: config.refreshToken,
       expiresIn: Math.floor((config.expiresAt.getTime() - Date.now()) / 1000),
     })
 
-    const syncManager = new SyncManager(client)
-
+    // Perform sync based on entity type
+    let result
     if (entityType === "all") {
-      await syncManager.syncAll()
+      result = await syncManager.syncAll()
     } else if (entityType === "cliente") {
-      if (entityId) {
-        const cliente = await prisma.cliente.findUnique({ where: { id: entityId } })
-        if (cliente) {
-          await syncManager.syncCliente(cliente as any)
-        }
-      } else {
-        const clientes = await prisma.cliente.findMany()
-        for (const cliente of clientes) {
-          await syncManager.syncCliente(cliente as any)
-        }
-      }
+      result = await syncManager.syncClientes(entityId)
     } else if (entityType === "produto") {
-      if (entityId) {
-        const produto = await prisma.produto.findUnique({
-          where: { id: entityId },
-          include: { categoria: true },
-        })
-        if (produto) {
-          await syncManager.syncProduto(produto as any)
-        }
-      } else {
-        const produtos = await prisma.produto.findMany({ include: { categoria: true } })
-        for (const produto of produtos) {
-          await syncManager.syncProduto(produto as any)
-        }
-      }
+      result = await syncManager.syncProdutos(entityId)
     } else if (entityType === "pedido") {
-      if (entityId) {
-        const pedido = await prisma.pedido.findUnique({
-          where: { id: entityId },
-          include: {
-            cliente: true,
-            itens: {
-              include: {
-                produto: {
-                  include: {
-                    categoria: true,
-                  },
-                },
-              },
-            },
-          },
-        })
-        if (pedido) {
-          await syncManager.syncPedido(pedido as any)
-        }
-      } else {
-        const pedidos = await prisma.pedido.findMany({
-          include: {
-            cliente: true,
-            itens: {
-              include: {
-                produto: {
-                  include: {
-                    categoria: true,
-                  },
-                },
-              },
-            },
-          },
-        })
-        for (const pedido of pedidos) {
-          await syncManager.syncPedido(pedido as any)
-        }
-      }
+      result = await syncManager.syncPedidos(entityId)
+    } else {
+      return NextResponse.json({ error: "Invalid entity type" }, { status: 400 })
     }
 
-    return NextResponse.json({ success: true })
+    console.log("Sync completed:", result)
+
+    return NextResponse.json(result)
   } catch (error) {
     console.error("Sync error:", error)
     return NextResponse.json(
-      { error: "Sync failed", details: error instanceof Error ? error.message : "Unknown error" },
+      {
+        error: "Sync failed",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
       { status: 500 },
     )
+  } finally {
+    await prisma.$disconnect()
   }
 }

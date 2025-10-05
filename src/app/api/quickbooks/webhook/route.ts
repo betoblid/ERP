@@ -1,80 +1,78 @@
-import { NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
+import crypto from "crypto"
+import { QuickBooksSyncManager } from "@/lib/quickbooks/sync-manager"
 import { PrismaClient } from "@prisma/client"
 
 const prisma = new PrismaClient()
 
-export async function GET() {
+export async function POST(request: NextRequest) {
   try {
+    const signature = request.headers.get("intuit-signature")
+    const body = await request.text()
+
+    // Verify webhook signature
+    if (!verifyWebhookSignature(signature, body)) {
+      console.error("Invalid webhook signature")
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 })
+    }
+
+    const payload = JSON.parse(body)
+    console.log("Webhook received:", payload)
+
+    // Get QuickBooks config
     const config = await prisma.quickBooksConfig.findFirst({
       orderBy: { createdAt: "desc" },
     })
 
     if (!config) {
-      return NextResponse.json({ isConfigured: false }, { status: 200 })
+      console.error("QuickBooks not configured")
+      return NextResponse.json({ error: "Not configured" }, { status: 400 })
     }
 
-    return NextResponse.json({
-      isConfigured: true,
+    // Process webhook events
+    const syncManager = new QuickBooksSyncManager({
       realmId: config.realmId,
-      expiresAt: config.expiresAt,
-      refreshTokenExpiresAt: config.refreshTokenExpiresAt,
-    })
-  } catch (error) {
-    console.error("Error fetching QuickBooks config:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
-  }
-}
-
-export async function POST(request: Request) {
-  try {
-    const data = await request.json()
-
-    // Delete existing configs
-    await prisma.quickBooksConfig.deleteMany()
-
-    // Create new config
-    const config = await prisma.quickBooksConfig.create({
-      data: {
-        realmId: data.realmId,
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token,
-        expiresAt: new Date(Date.now() + data.expires_in * 1000),
-        refreshTokenExpiresAt: new Date(Date.now() + data.x_refresh_token_expires_in * 1000),
-      },
+      accessToken: config.accessToken,
+      refreshToken: config.refreshToken,
+      expiresIn: Math.floor((config.expiresAt.getTime() - Date.now()) / 1000),
     })
 
-    return NextResponse.json(config)
-  } catch (error) {
-    console.error("Error saving QuickBooks tokens:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
-  }
-}
+    for (const entity of payload.eventNotifications) {
+      for (const dataChangeEvent of entity.dataChangeEvent.entities) {
+        const entityType = dataChangeEvent.name
+        const entityId = dataChangeEvent.id
+        const operation = dataChangeEvent.operation
 
-export async function PUT(request: Request) {
-  try {
-    const data = await request.json()
+        console.log(`Processing ${operation} for ${entityType} ${entityId}`)
 
-    const config = await prisma.quickBooksConfig.findFirst({
-      where: { realmId: data.realmId },
-    })
-
-    if (!config) {
-      return NextResponse.json({ error: "Config not found" }, { status: 404 })
+        // Handle different entity types
+        if (entityType === "Customer") {
+          await syncManager.syncClientes()
+        } else if (entityType === "Item") {
+          await syncManager.syncProdutos()
+        } else if (entityType === "Invoice") {
+          await syncManager.syncPedidos()
+        }
+      }
     }
 
-    const updated = await prisma.quickBooksConfig.update({
-      where: { id: config.id },
-      data: {
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token,
-        expiresAt: new Date(Date.now() + data.expires_in * 1000),
-        refreshTokenExpiresAt: new Date(Date.now() + data.x_refresh_token_expires_in * 1000),
-      },
-    })
-
-    return NextResponse.json(updated)
+    return NextResponse.json({ success: true })
   } catch (error) {
-    console.error("Error updating QuickBooks tokens:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error("Webhook processing error:", error)
+    return NextResponse.json({ error: "Processing failed" }, { status: 500 })
+  } finally {
+    await prisma.$disconnect()
   }
+}
+
+function verifyWebhookSignature(signature: string | null, payload: string): boolean {
+  if (!signature || !process.env.QUICKBOOKS_WEBHOOK_TOKEN) {
+    return false
+  }
+
+  const hmac = crypto.createHmac("sha256", process.env.QUICKBOOKS_WEBHOOK_TOKEN)
+  hmac.update(payload)
+  const hash = hmac.digest("base64")
+
+  return signature === hash
 }

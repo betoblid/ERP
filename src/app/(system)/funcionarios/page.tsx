@@ -10,7 +10,7 @@ import Link from "next/link"
 const getEmployeesAll = async (): Promise<Funcionario[]> => {
 
   const token = await getCookies()
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}funcionario`, {
+  const response = await fetch(`${process.env.NEXT_PUBLIC_URL_API}funcionario`, {
     headers: {
       Authorization: `Bearer ${token}`
     }

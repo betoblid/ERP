@@ -10,7 +10,7 @@ import { filtrarPedidosDeOntemParaHoje } from "@/utils/filtrarPedidosDeOntemPara
 const getProductsAll = async (): Promise<Produto[]> => {
 
   const token = await getCookies()
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}produto`, {
+  const response = await fetch(`${process.env.NEXT_PUBLIC_URL_API}produto`, {
     headers: {
       Authorization: `Bearer ${token}`
     }
@@ -22,7 +22,7 @@ const getProductsAll = async (): Promise<Produto[]> => {
 const getPedidoAll = async (): Promise<Pedido[] | []> => {
 
     const token = await getCookies()
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}pedido`, {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_URL_API}pedido`, {
         headers: {
             Authorization: `Bearer ${token}`
         }
