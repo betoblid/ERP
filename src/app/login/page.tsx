@@ -38,6 +38,9 @@ export default function Login() {
       const response = await api.post("login", data)
       const { token, user } = response.data
 
+      console.log("Login response:", response.data) // Log the entire response
+      console.log("Token:", token) // Log the token
+      console.log("User:", user) // Log the user data 
       // salvar token e user data
       setToken(token)
       setUser(user)

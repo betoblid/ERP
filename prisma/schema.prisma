@@ -1,0 +1,183 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Usuario {
+  id        Int      @id @default(autoincrement())
+  nome      String
+  email     String   @unique
+  senha     String
+  role      String   @default("user")
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("usuarios")
+}
+
+model Funcionario {
+  id                Int       @id @default(autoincrement())
+  nome              String
+  email             String    @unique
+  telefone          String
+  cargo             String
+  dataAdmissao      DateTime
+  salario           Decimal   @db.Decimal(10, 2)
+  ativo             Boolean   @default(true)
+  cpf               String    @unique
+  endereco          String
+  dataNascimento    DateTime?
+  departamento      String?
+  registrosPonto    RegistroPonto[]
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@map("funcionarios")
+}
+
+model Cliente {
+  id            Int       @id @default(autoincrement())
+  nome          String
+  email         String
+  telefone      String
+  endereco      String
+  documento     String    @unique
+  tipoDocumento String
+  ativo         Boolean   @default(true)
+  quickbooksId  String?   @unique
+  syncedAt      DateTime?
+  syncStatus    String    @default("pending")
+  pedidos       Pedido[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("clientes")
+}
+
+model Categoria {
+  id        Int       @id @default(autoincrement())
+  nome      String    @unique
+  descricao String?
+  produtos  Produto[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("categorias")
+}
+
+model Produto {
+  id            Int          @id @default(autoincrement())
+  nome          String
+  codigo        String       @unique
+  descricao     String?
+  preco         Decimal      @db.Decimal(10, 2)
+  estoque       Int
+  estoqueAtual  Int
+  categoriaId   Int
+  categoria     Categoria    @relation(fields: [categoriaId], references: [id])
+  ativo         Boolean      @default(true)
+  quickbooksId  String?      @unique
+  syncedAt      DateTime?
+  syncStatus    String       @default("pending")
+  itens         PedidoItem[]
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@map("produtos")
+}
+
+model Pedido {
+  id           Int          @id @default(autoincrement())
+  numero       String       @unique
+  clienteId    Int
+  cliente      Cliente      @relation(fields: [clienteId], references: [id])
+  data         DateTime
+  horario      String
+  endereco     String
+  observacao   String?
+  status       String       @default("agendado")
+  valorTotal   Decimal      @db.Decimal(10, 2) @default(0)
+  quickbooksId String?      @unique
+  syncedAt     DateTime?
+  syncStatus   String       @default("pending")
+  itens        PedidoItem[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@map("pedidos")
+}
+
+model PedidoItem {
+  id            Int      @id @default(autoincrement())
+  pedidoId      Int
+  pedido        Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  produtoId     Int
+  produto       Produto  @relation(fields: [produtoId], references: [id])
+  quantidade    Int
+  precoUnitario Decimal  @db.Decimal(10, 2)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("pedido_itens")
+}
+
+model RegistroPonto {
+  id            Int         @id @default(autoincrement())
+  funcionarioId Int
+  funcionario   Funcionario @relation(fields: [funcionarioId], references: [id])
+  data          DateTime
+  horaEntrada   String
+  horaSaida     String?
+  observacao    String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@map("registros_ponto")
+}
+
+model OrdemServico {
+  id          Int      @id @default(autoincrement())
+  clienteId   Int
+  titulo      String
+  descricao   String
+  status      String   @default("pendente")
+  prioridade  String   @default("media")
+  dataInicio  DateTime
+  dataFim     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("ordens_servico")
+}
+
+model QuickBooksConfig {
+  id                      Int      @id @default(autoincrement())
+  realmId                 String   @unique
+  accessToken             String
+  refreshToken            String
+  expiresAt               DateTime
+  refreshTokenExpiresAt   DateTime
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@map("quickbooks_config")
+}
+
+model SyncLog {
+  id           Int      @id @default(autoincrement())
+  entityType   String
+  entityId     Int
+  action       String
+  status       String
+  quickbooksId String?
+  errorMessage String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("sync_logs")
+}

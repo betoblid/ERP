@@ -12,6 +12,8 @@ interface DecodedToken {
 
 
 export const setToken = (token: string): void => {
+
+  console.log("Setting token:", token) // Log the token being set
   if (typeof window !== "undefined") {
     sessionStorage.setItem("token", token)
   }

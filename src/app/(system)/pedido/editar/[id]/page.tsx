@@ -6,11 +6,11 @@ import { useForm, useFieldArray } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { format } from "date-fns"
-import { Loader2, Plus, Trash2, Save, ArrowLeft, AlertTriangle, CalendarIcon } from 'lucide-react'
+import { Loader2, Plus, Trash2, Save, ArrowLeft, AlertTriangle, CalendarIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, useFormField } from "@/components/ui/form"
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
@@ -23,17 +23,17 @@ import type { Cliente, Produto, Pedido } from "@/@types"
 import { toast } from "sonner"
 import api from "@/lib/api"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import "react-day-picker/style.css";
 import { cn } from "@/lib/utils"
 import { DayPicker } from "react-day-picker"
 import { ptBR } from "date-fns/locale"
 
-// Schema de validação aprimorado
 const formSchema = z.object({
-  clienteId: z.coerce.number({
-    required_error: "Cliente é obrigatório",
-    invalid_type_error: "Selecione um cliente válido",
-  }),
+  clienteId: z.coerce
+    .number({
+      required_error: "Cliente é obrigatório",
+      invalid_type_error: "Selecione um cliente válido",
+    })
+    .positive("Selecione um cliente válido"),
   status: z.enum(["agendado", "em_andamento", "concluido", "cancelado", "entregue", "retirado"], {
     required_error: "Status é obrigatório",
   }),
@@ -52,14 +52,17 @@ const formSchema = z.object({
   endereco: z.string().min(5, {
     message: "Endereço deve ter pelo menos 5 caracteres",
   }),
-  observacao: z.string().min(5, "Observação deve ter pelo menos 5 caracteres"),
-  itens: z.array(
+  observacao: z.string().optional(),
+  itens: z
+    .array(
       z.object({
         id: z.string().optional(),
-        produtoId: z.coerce.number({
-          required_error: "Produto é obrigatório",
-          invalid_type_error: "Selecione um produto válido",
-        }),
+        produtoId: z.coerce
+          .number({
+            required_error: "Produto é obrigatório",
+            invalid_type_error: "Selecione um produto válido",
+          })
+          .positive("Selecione um produto válido"),
         quantidade: z.coerce
           .number({
             required_error: "Quantidade é obrigatória",
@@ -102,15 +105,15 @@ export default function EditarPedidoPage() {
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      clienteId: undefined,
+      clienteId: 0,
       status: "agendado",
       data: new Date(),
       horario: format(new Date(), "HH:mm"),
       endereco: "",
       observacao: "",
-      itens: [{ produtoId: undefined, quantidade: 1, precoUnitario: 0 }],
+      itens: [],
     },
-    mode: "onChange", // Validação em tempo real
+    mode: "onChange",
   })
 
   const { fields, append, remove } = useFieldArray({
@@ -118,28 +121,24 @@ export default function EditarPedidoPage() {
     name: "itens",
   })
 
-  // Carregar dados do pedido, clientes e produtos
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true)
       setLoadingError(null)
       try {
-        // Carregar pedido, clientes e produtos em paralelo
         const [pedidoData, clientesRes, produtosRes] = await Promise.all([
           getPedidoPorId(pedidoId),
           api.get("/clientes").then((res) => res.data),
-          api.get("/produto").then((res) => res.data),
+          api.get("/produtos").then((res) => res.data),
         ])
 
         setPedido(pedidoData)
         setClientes(clientesRes)
         setProdutos(produtosRes)
 
-        // Encontrar o cliente selecionado
         const cliente = clientesRes.find((c: Cliente) => c.id === pedidoData.clienteId) || null
         setClienteSelecionado(cliente)
 
-        // Preencher o formulário com os dados do pedido
         form.reset({
           clienteId: pedidoData.clienteId,
           status: pedidoData.status,
@@ -149,27 +148,25 @@ export default function EditarPedidoPage() {
           observacao: pedidoData.observacao || "",
           itens: pedidoData.itens.length
             ? pedidoData.itens.map((item: any) => ({
-              id: item.id,
-              produtoId: item.produtoId,
-              quantidade: item.quantidade,
-              precoUnitario: item.precoUnitario,
-            }))
-            : [{ produtoId: undefined, quantidade: 1, precoUnitario: 0 }],
+                id: item.id,
+                produtoId: item.produtoId,
+                quantidade: item.quantidade,
+                precoUnitario: item.precoUnitario,
+              }))
+            : [],
         })
       } catch (error) {
         console.error("Erro ao carregar dados:", error)
-        setLoadingError(
-          error instanceof Error ? error.message : "Não foi possível carregar os dados do pedido.",
-        )
+        setLoadingError(error instanceof Error ? error.message : "Não foi possível carregar os dados do pedido.")
+        toast.error("Erro ao carregar dados do pedido")
       } finally {
         setIsLoading(false)
       }
     }
 
     fetchData()
-  }, [pedidoId])
+  }, [pedidoId, getPedidoPorId, form])
 
-  // Atualizar endereço do cliente quando o cliente mudar
   const handleClienteChange = (clienteId: string) => {
     const cliente = clientes.find((c) => c.id === Number(clienteId)) || null
     setClienteSelecionado(cliente)
@@ -179,7 +176,6 @@ export default function EditarPedidoPage() {
     }
   }
 
-  // Atualizar preço unitário quando o produto mudar
   const handleProdutoChange = (index: number, produtoId: string) => {
     const produto = produtos.find((p) => p.id === Number(produtoId))
     if (produto) {
@@ -191,39 +187,45 @@ export default function EditarPedidoPage() {
     setIsSubmitting(true)
 
     try {
-      await atualizarPedido(pedidoId, {
+      console.log("Enviando dados:", values)
+
+      const dadosAtualizacao = {
         status: values.status,
         data: values.data.toISOString(),
         horario: values.horario,
         endereco: values.endereco,
         clienteId: values.clienteId,
-        observacao: values.observacao,
-        itens: values.itens,
-      });
+        observacao: values.observacao || "",
+        itens: values.itens.map((item) => ({
+          produtoId: item.produtoId,
+          quantidade: item.quantidade,
+          precoUnitario: item.precoUnitario,
+        })),
+      }
 
-      toast(`O pedido #${pedidoId} foi atualizado.`)
+      console.log("Dados formatados para envio:", dadosAtualizacao)
 
-      router.push("/pedido")
+      await atualizarPedido(pedidoId, dadosAtualizacao)
+
+      toast.success(`Pedido #${pedido?.numero || pedidoId} atualizado com sucesso!`)
+
+      router.push("/pedidos")
+      router.refresh()
     } catch (error) {
       console.error("Erro ao atualizar pedido:", error)
-      toast("Ocorreu um erro ao processar sua solicitação. Tente novamente.")
+      toast.error(error instanceof Error ? error.message : "Erro ao atualizar pedido. Tente novamente.")
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  // Calcular o valor total do pedido
   const calcularTotal = () => {
     const itens = form.watch("itens")
     return itens.reduce((total, item) => {
-      return total + item.quantidade * item.precoUnitario
+      return total + (item.quantidade || 0) * (item.precoUnitario || 0)
     }, 0)
   }
 
-  // Verificar se o formulário tem alterações
-  const formHasChanges = form.formState.isDirty
-
-  // Obter produto pelo ID
   const getProdutoById = (id: number) => {
     return produtos.find((p) => p.id === id)
   }
@@ -257,9 +259,12 @@ export default function EditarPedidoPage() {
   return (
     <div className="container mx-auto py-6">
       <PageHeader
-        title={`Editar Pedido #${pedido?.id}`}
+        title={`Editar Pedido #${pedido?.numero || pedidoId}`}
         description="Atualize as informações do pedido"
-        breadcrumbs={[{ label: "Pedidos", href: "/pedidos" }, { label: `Editar Pedido #${pedido?.id}` }]}
+        breadcrumbs={[
+          { label: "Pedidos", href: "/pedidos" },
+          { label: `Editar Pedido #${pedido?.numero || pedidoId}` },
+        ]}
         actions={
           <Button variant="outline" onClick={() => router.push("/pedidos")}>
             <ArrowLeft className="mr-2 h-4 w-4" />
@@ -271,7 +276,6 @@ export default function EditarPedidoPage() {
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 mt-6">
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            {/* Informações do pedido */}
             <Card>
               <CardHeader>
                 <CardTitle>Informações do Pedido</CardTitle>
@@ -283,13 +287,13 @@ export default function EditarPedidoPage() {
                   name="clienteId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Cliente</FormLabel>
+                      <FormLabel>Cliente *</FormLabel>
                       <Select
                         onValueChange={(value) => {
-                          field.onChange(value)
+                          field.onChange(Number(value))
                           handleClienteChange(value)
                         }}
-                        defaultValue={field.value?.toString()}
+                        value={field.value?.toString()}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -312,7 +316,7 @@ export default function EditarPedidoPage() {
                 {clienteSelecionado && (
                   <div className="rounded-md bg-muted p-3 text-sm">
                     <div className="font-medium">{clienteSelecionado.nome}</div>
-                    <div className="text-muted-foreground mt-1">
+                    <div className="text-muted-foreground mt-1 space-y-1">
                       <div>{clienteSelecionado.email}</div>
                       <div>{clienteSelecionado.telefone}</div>
                       <div>
@@ -327,8 +331,8 @@ export default function EditarPedidoPage() {
                   name="status"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Status</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormLabel>Status *</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Selecione um status" />
@@ -354,15 +358,15 @@ export default function EditarPedidoPage() {
                     name="data"
                     render={({ field }) => (
                       <FormItem className="flex flex-col">
-                        <FormLabel>Date of birth</FormLabel>
+                        <FormLabel>Data *</FormLabel>
                         <Popover>
                           <PopoverTrigger asChild>
                             <FormControl>
                               <Button
                                 variant={"outline"}
                                 className={cn(
-                                  "w-[240px] pl-3 text-left font-normal",
-                                  !field.value && "text-muted-foreground"
+                                  "w-full pl-3 text-left font-normal",
+                                  !field.value && "text-muted-foreground",
                                 )}
                               >
                                 {field.value ? (
@@ -379,10 +383,8 @@ export default function EditarPedidoPage() {
                               mode="single"
                               selected={field.value}
                               onSelect={field.onChange}
-                              disabled={(date) =>
-                                date < new Date("2024-01-01")
-                              }
-                              initialFocus
+                              disabled={(date) => date < new Date("2024-01-01")}
+                              locale={ptBR}
                             />
                           </PopoverContent>
                         </Popover>
@@ -396,7 +398,7 @@ export default function EditarPedidoPage() {
                     name="horario"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Horário</FormLabel>
+                        <FormLabel>Horário *</FormLabel>
                         <FormControl>
                           <Input type="time" {...field} />
                         </FormControl>
@@ -411,7 +413,7 @@ export default function EditarPedidoPage() {
                   name="endereco"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Endereço</FormLabel>
+                      <FormLabel>Endereço *</FormLabel>
                       <FormControl>
                         <Input placeholder="Endereço completo" {...field} />
                       </FormControl>
@@ -441,7 +443,6 @@ export default function EditarPedidoPage() {
               </CardContent>
             </Card>
 
-            {/* Itens do pedido */}
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
@@ -452,26 +453,19 @@ export default function EditarPedidoPage() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => append({ produtoId: Number(pedido?.id) ?? undefined, quantidade: 1, precoUnitario: 0 })}
+                  onClick={() => append({ produtoId: 0, quantidade: 1, precoUnitario: 0 })}
                 >
                   <Plus className="mr-2 h-4 w-4" />
-                  Adicionar Item
+                  Adicionar
                 </Button>
               </CardHeader>
               <CardContent className="space-y-4">
                 {fields.length === 0 ? (
-                  <div className="text-center py-4 text-muted-foreground">
-                    Nenhum item adicionado. Clique em "Adicionar Item" para começar.
+                  <div className="text-center py-8 text-muted-foreground">
+                    Nenhum item adicionado. Clique em "Adicionar" para começar.
                   </div>
                 ) : (
                   <>
-                    <div className="grid grid-cols-12 gap-2 text-sm font-medium text-muted-foreground px-1">
-                      <div className="col-span-5">Produto</div>
-                      <div className="col-span-2">Qtd</div>
-                      <div className="col-span-3">Preço Unit.</div>
-                      <div className="col-span-2 text-right">Subtotal</div>
-                    </div>
-
                     {fields.map((field, index) => {
                       const produtoId = form.watch(`itens.${index}.produtoId`)
                       const quantidade = form.watch(`itens.${index}.quantidade`) || 0
@@ -480,100 +474,101 @@ export default function EditarPedidoPage() {
                       const produto = produtoId ? getProdutoById(Number(produtoId)) : null
 
                       return (
-                        <div key={field.id} className="grid grid-cols-12 gap-2 items-end">
-                          <FormField
-                            control={form.control}
-                            name={`itens.${index}.produtoId`}
-                            render={({ field: produtoField }) => (
-                              <FormItem className="col-span-5">
-                                <Select
-                                  onValueChange={(value) => {
-                                    produtoField.onChange(value)
-                                    handleProdutoChange(index, value)
-                                  }}
-                                  defaultValue={produtoField.value?.toString()}
-                                >
+                        <div key={field.id} className="space-y-3 p-4 border rounded-lg">
+                          <div className="grid grid-cols-12 gap-3">
+                            <FormField
+                              control={form.control}
+                              name={`itens.${index}.produtoId`}
+                              render={({ field: produtoField }) => (
+                                <FormItem className="col-span-12 sm:col-span-6">
+                                  <FormLabel>Produto *</FormLabel>
+                                  <Select
+                                    onValueChange={(value) => {
+                                      produtoField.onChange(Number(value))
+                                      handleProdutoChange(index, value)
+                                    }}
+                                    value={produtoField.value?.toString()}
+                                  >
+                                    <FormControl>
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Selecione" />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                      {produtos.map((produto) => (
+                                        <SelectItem key={produto.id} value={produto.id.toString()}>
+                                          {produto.nome}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+
+                            <FormField
+                              control={form.control}
+                              name={`itens.${index}.quantidade`}
+                              render={({ field: quantidadeField }) => (
+                                <FormItem className="col-span-6 sm:col-span-3">
+                                  <FormLabel>Qtd *</FormLabel>
                                   <FormControl>
-                                    <SelectTrigger>
-                                      <SelectValue placeholder="Selecione" />
-                                    </SelectTrigger>
+                                    <Input type="number" min="1" {...quantidadeField} />
                                   </FormControl>
-                                  <SelectContent>
-                                    {produtos.map((produto) => (
-                                      <SelectItem key={produto.id} value={produto.id.toString()}>
-                                        {produto.nome}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
 
-                          <FormField
-                            control={form.control}
-                            name={`itens.${index}.quantidade`}
-                            render={({ field: quantidadeField }) => (
-                              <FormItem className="col-span-2">
-                                <FormControl>
-                                  <Input type="number" min="1" {...quantidadeField} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          <FormField
-                            control={form.control}
-                            name={`itens.${index}.precoUnitario`}
-                            render={({ field: precoField }) => (
-                              <FormItem className="col-span-3">
-                                <FormControl>
-                                  <Input type="number" step="0.01" min="0" {...precoField} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          <div className="col-span-2 flex items-center justify-end">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={() => remove(index)}
-                              disabled={fields.length === 1}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              <span className="sr-only">Remover item</span>
-                            </Button>
-                            <div className="w-16 text-right">R$ {subtotal.toFixed(2)}</div>
+                            <FormField
+                              control={form.control}
+                              name={`itens.${index}.precoUnitario`}
+                              render={({ field: precoField }) => (
+                                <FormItem className="col-span-6 sm:col-span-3">
+                                  <FormLabel>Preço *</FormLabel>
+                                  <FormControl>
+                                    <Input type="number" step="0.01" min="0" {...precoField} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
                           </div>
 
-                          {produto && (
-                            <div className="col-span-12">
+                          <div className="flex items-center justify-between">
+                            {produto && (
                               <div className="text-xs text-muted-foreground flex items-center gap-2">
                                 <Badge variant="outline" className="text-xs">
-                                  {produto.categoria.nome}
+                                  {produto.categoria?.nome || "Sem categoria"}
                                 </Badge>
-                                <span>
-                                  Estoque: {produto.estoqueAtual} {produto.estoqueAtual > 1 ? "unidades" : "unidade"}
-                                </span>
+                                <span>Estoque: {produto.estoque || 0}</span>
                               </div>
+                            )}
+                            <div className="flex items-center gap-3">
+                              <div className="text-sm font-medium">Subtotal: R$ {subtotal.toFixed(2)}</div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-destructive hover:text-destructive"
+                                onClick={() => remove(index)}
+                                disabled={fields.length === 1}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
                             </div>
-                          )}
+                          </div>
                         </div>
                       )
                     })}
 
-                    <Separator className="my-2" />
+                    <Separator />
 
                     <div className="flex justify-end">
                       <div className="text-right">
-                        <div className="text-sm text-muted-foreground">Total</div>
-                        <div className="text-lg font-bold">R$ {calcularTotal().toFixed(2)}</div>
+                        <div className="text-sm text-muted-foreground">Total do Pedido</div>
+                        <div className="text-2xl font-bold">R$ {calcularTotal().toFixed(2)}</div>
                       </div>
                     </div>
                   </>
@@ -584,10 +579,10 @@ export default function EditarPedidoPage() {
 
           <Card>
             <CardFooter className="flex justify-between pt-6">
-              <Button type="button" variant="outline" onClick={() => router.push("/pedido")}>
+              <Button type="button" variant="outline" onClick={() => router.push("/pedidos")}>
                 Cancelar
               </Button>
-              <Button type="submit" >
+              <Button type="submit" disabled={isSubmitting || !form.formState.isValid}>
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
