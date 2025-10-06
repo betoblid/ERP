@@ -1,78 +1,61 @@
-import { type NextRequest, NextResponse } from "next/server"
-import crypto from "crypto"
-import { QuickBooksSyncManager } from "@/lib/quickbooks/sync-manager"
+import { NextResponse } from "next/server"
 import { PrismaClient } from "@prisma/client"
+import crypto from "crypto"
 
 const prisma = new PrismaClient()
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
+    const payload = await request.text()
     const signature = request.headers.get("intuit-signature")
-    const body = await request.text()
 
     // Verify webhook signature
-    if (!verifyWebhookSignature(signature, body)) {
-      console.error("Invalid webhook signature")
-      return NextResponse.json({ error: "Invalid signature" }, { status: 401 })
+    const webhookToken = process.env.QUICKBOOKS_WEBHOOK_TOKEN
+    if (webhookToken && signature) {
+      const hash = crypto.createHmac("sha256", webhookToken).update(payload).digest("base64")
+
+      if (hash !== signature) {
+        console.error("Invalid webhook signature")
+        return NextResponse.json({ error: "Invalid signature" }, { status: 401 })
+      }
     }
 
-    const payload = JSON.parse(body)
-    console.log("Webhook received:", payload)
-
-    // Get QuickBooks config
-    const config = await prisma.quickBooksConfig.findFirst({
-      orderBy: { createdAt: "desc" },
-    })
-
-    if (!config) {
-      console.error("QuickBooks not configured")
-      return NextResponse.json({ error: "Not configured" }, { status: 400 })
-    }
+    const data = JSON.parse(payload)
+    console.log("Webhook received:", data)
 
     // Process webhook events
-    const syncManager = new QuickBooksSyncManager({
-      realmId: config.realmId,
-      accessToken: config.accessToken,
-      refreshToken: config.refreshToken,
-      expiresIn: Math.floor((config.expiresAt.getTime() - Date.now()) / 1000),
-    })
+    for (const event of data.eventNotifications || []) {
+      const realmId = event.realmId
+      const dataChangeEvent = event.dataChangeEvent
 
-    for (const entity of payload.eventNotifications) {
-      for (const dataChangeEvent of entity.dataChangeEvent.entities) {
-        const entityType = dataChangeEvent.name
-        const entityId = dataChangeEvent.id
-        const operation = dataChangeEvent.operation
+      if (!dataChangeEvent) continue
 
-        console.log(`Processing ${operation} for ${entityType} ${entityId}`)
+      for (const entity of dataChangeEvent.entities || []) {
+        const entityName = entity.name
+        const entityId = entity.id
+        const operation = entity.operation
 
-        // Handle different entity types
-        if (entityType === "Customer") {
-          await syncManager.syncClientes()
-        } else if (entityType === "Item") {
-          await syncManager.syncProdutos()
-        } else if (entityType === "Invoice") {
-          await syncManager.syncPedidos()
-        }
+        console.log(`Webhook event: ${operation} on ${entityName} with ID ${entityId}`)
+
+        // Log webhook event
+        await prisma.syncLog.create({
+          data: {
+            entityType: entityName.toLowerCase(),
+            entityId: 0,
+            action: operation.toLowerCase(),
+            status: "success",
+            quickbooksId: entityId,
+            errorMessage: "Webhook event received",
+          },
+        })
       }
     }
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error("Webhook processing error:", error)
-    return NextResponse.json({ error: "Processing failed" }, { status: 500 })
+    console.error("Webhook error:", error)
+    return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 })
   } finally {
     await prisma.$disconnect()
   }
-}
-
-function verifyWebhookSignature(signature: string | null, payload: string): boolean {
-  if (!signature || !process.env.QUICKBOOKS_WEBHOOK_TOKEN) {
-    return false
-  }
-
-  const hmac = crypto.createHmac("sha256", process.env.QUICKBOOKS_WEBHOOK_TOKEN)
-  hmac.update(payload)
-  const hash = hmac.digest("base64")
-
-  return signature === hash
 }

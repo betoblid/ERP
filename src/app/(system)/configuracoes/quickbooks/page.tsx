@@ -1,50 +1,53 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useSearchParams } from "next/navigation"
-import { Button } from "@/components/ui/button"
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { PageHeader } from "@/components/page-header"
+import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, RefreshCw, CheckCircle, XCircle, ExternalLink, AlertTriangle } from "lucide-react"
+import { ExternalLink, RefreshCw, CheckCircle, XCircle, Loader2, AlertTriangle } from "lucide-react"
+import { PageHeader } from "@/components/page-header"
 import { toast } from "sonner"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { useRouter, useSearchParams } from "next/navigation"
 
 export default function QuickBooksConfigPage() {
+  const router = useRouter()
   const searchParams = useSearchParams()
+  const [isConfigured, setIsConfigured] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSyncing, setIsSyncing] = useState(false)
-  const [config, setConfig] = useState<any>(null)
   const [syncLogs, setSyncLogs] = useState<any[]>([])
+  const [config, setConfig] = useState<any>(null)
 
   useEffect(() => {
-    loadConfig()
+    checkConfiguration()
     loadSyncLogs()
 
     // Check for OAuth callback results
-    if (searchParams.get("success") === "true") {
+    const success = searchParams.get("success")
+    const error = searchParams.get("error")
+
+    if (success) {
       toast.success("QuickBooks conectado com sucesso!")
-      loadConfig()
-    } else if (searchParams.get("error")) {
-      const errorType = searchParams.get("error")
-      const errorMessages: Record<string, string> = {
-        auth_failed: "Falha na autenticação. Tente novamente.",
-        missing_params: "Parâmetros ausentes na resposta do QuickBooks.",
-        true: "Erro ao conectar com QuickBooks. Verifique suas credenciais.",
-      }
-      toast.error(errorMessages[errorType] || "Erro desconhecido")
+      router.replace("/configuracoes/quickbooks")
+      checkConfiguration()
+    }
+
+    if (error) {
+      toast.error(`Erro ao conectar: ${error}`)
+      router.replace("/configuracoes/quickbooks")
     }
   }, [searchParams])
 
-  const loadConfig = async () => {
+  const checkConfiguration = async () => {
+    setIsLoading(true)
     try {
       const response = await fetch("/api/quickbooks/tokens")
-      if (response.ok) {
-        const data = await response.json()
-        setConfig(data)
-      }
+      const data = await response.json()
+      setIsConfigured(data.isConfigured)
+      setConfig(data)
     } catch (error) {
-      console.error("Error loading config:", error)
+      console.error("Error checking configuration:", error)
+      toast.error("Erro ao verificar configuração")
     } finally {
       setIsLoading(false)
     }
@@ -52,11 +55,9 @@ export default function QuickBooksConfigPage() {
 
   const loadSyncLogs = async () => {
     try {
-      const response = await fetch("/api/sync-logs?limit=10")
-      if (response.ok) {
-        const data = await response.json()
-        setSyncLogs(data)
-      }
+      const response = await fetch("/api/quickbooks/sync-logs?limit=10")
+      const logs = await response.json()
+      setSyncLogs(logs)
     } catch (error) {
       console.error("Error loading sync logs:", error)
     }
@@ -64,45 +65,37 @@ export default function QuickBooksConfigPage() {
 
   const handleConnect = () => {
     const clientId = process.env.NEXT_PUBLIC_QUICKBOOKS_CLIENT_ID
-    const redirectUri = `${window.location.origin}/api/quickbooks/auth`
-    const scope = "com.intuit.quickbooks.accounting"
+    const redirectUri = encodeURIComponent(process.env.NEXT_PUBLIC_API_URL + "/api/quickbooks/auth")
+    const scope = encodeURIComponent("com.intuit.quickbooks.accounting")
     const state = Math.random().toString(36).substring(7)
 
-    if (!clientId) {
-      toast.error("QUICKBOOKS_CLIENT_ID não está configurado")
-      return
-    }
+    const authUrl =
+      process.env.NEXT_PUBLIC_QUICKBOOKS_ENVIRONMENT === "production"
+        ? `https://appcenter.intuit.com/connect/oauth2?client_id=${clientId}&scope=${scope}&redirect_uri=${redirectUri}&response_type=code&state=${state}`
+        : `https://appcenter.intuit.com/connect/oauth2?client_id=${clientId}&scope=${scope}&redirect_uri=${redirectUri}&response_type=code&state=${state}`
 
-    const authUrl = `https://appcenter.intuit.com/connect/oauth2?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&response_type=code&state=${state}`
-
-    console.log("Redirecting to QuickBooks OAuth:", authUrl)
     window.location.href = authUrl
   }
 
-  const handleSync = async (entityType?: string, entityId?: number) => {
+  const handleSync = async (entityType: string) => {
     setIsSyncing(true)
     try {
       const response = await fetch("/api/quickbooks/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          entityType: entityType || "all",
-          entityId,
-        }),
+        body: JSON.stringify({ entityType }),
       })
 
-      if (response.ok) {
-        const result = await response.json()
-        toast.success("Sincronização concluída com sucesso")
-        console.log("Sync result:", result)
-        loadSyncLogs()
-      } else {
-        const error = await response.json()
-        throw new Error(error.error || "Sync failed")
+      if (!response.ok) {
+        throw new Error("Sync failed")
       }
+
+      const result = await response.json()
+      toast.success(`Sincronização de ${entityType} concluída!`)
+      loadSyncLogs()
     } catch (error) {
       console.error("Sync error:", error)
-      toast.error(error instanceof Error ? error.message : "Erro ao sincronizar com QuickBooks")
+      toast.error("Erro ao sincronizar")
     } finally {
       setIsSyncing(false)
     }
@@ -111,162 +104,140 @@ export default function QuickBooksConfigPage() {
   if (isLoading) {
     return (
       <div className="container mx-auto py-6">
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin" />
         </div>
       </div>
     )
   }
 
   return (
-    <div className="container mx-auto py-6">
+    <div className="container mx-auto py-6 space-y-6">
       <PageHeader
         title="Configuração QuickBooks"
         description="Gerencie a integração com QuickBooks Online"
         breadcrumbs={[{ label: "Configurações", href: "/configuracoes" }, { label: "QuickBooks" }]}
       />
 
-      <div className="mt-6 space-y-6">
-        {!process.env.NEXT_PUBLIC_QUICKBOOKS_CLIENT_ID && (
-          <Alert variant="destructive">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Configuração Necessária</AlertTitle>
-            <AlertDescription>
-              As variáveis de ambiente do QuickBooks não estão configuradas. Configure QUICKBOOKS_CLIENT_ID,
-              QUICKBOOKS_CLIENT_SECRET e QUICKBOOKS_REDIRECT_URI no arquivo .env
-            </AlertDescription>
-          </Alert>
-        )}
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Status da Integração</CardTitle>
-            <CardDescription>Conecte sua conta QuickBooks para sincronizar dados financeiros</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {config?.isConfigured ? (
-              <>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle className="h-5 w-5 text-green-600" />
-                      <span className="font-medium">Conectado ao QuickBooks</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">Realm ID: {config.realmId}</p>
-                    <p className="text-sm text-muted-foreground">
-                      Token expira em: {new Date(config.expiresAt).toLocaleString("pt-BR")}
-                    </p>
-                  </div>
-                  <Button onClick={() => handleSync()} disabled={isSyncing}>
-                    {isSyncing ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Sincronizando...
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="mr-2 h-4 w-4" />
-                        Sincronizar Tudo
-                      </>
-                    )}
-                  </Button>
-                </div>
-
-                <Alert>
-                  <AlertTitle>Sincronização Automática</AlertTitle>
-                  <AlertDescription>
-                    Os dados são sincronizados automaticamente quando você cria ou atualiza clientes, produtos e
-                    pedidos. Você também pode forçar uma sincronização completa usando o botão acima.
-                  </AlertDescription>
-                </Alert>
-              </>
-            ) : (
-              <div className="space-y-4">
-                <Alert>
-                  <XCircle className="h-4 w-4" />
-                  <AlertTitle>Não Conectado</AlertTitle>
-                  <AlertDescription>
-                    Você precisa conectar sua conta QuickBooks para usar os recursos de integração financeira.
-                  </AlertDescription>
-                </Alert>
-                <Button onClick={handleConnect} disabled={!process.env.NEXT_PUBLIC_QUICKBOOKS_CLIENT_ID}>
-                  <ExternalLink className="mr-2 h-4 w-4" />
-                  Conectar QuickBooks
-                </Button>
+      <Card>
+        <CardHeader>
+          <CardTitle>Status da Integração</CardTitle>
+          <CardDescription>Conecte sua conta QuickBooks para sincronizar dados financeiros</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isConfigured ? (
+            <div className="flex items-center gap-3 p-4 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+              <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+              <div className="flex-1">
+                <p className="font-medium text-green-900 dark:text-green-100">Conectado</p>
+                <p className="text-sm text-green-700 dark:text-green-300">
+                  Sua conta QuickBooks está conectada e pronta para sincronização.
+                </p>
+                {config?.realmId && (
+                  <div>
+                     <p className="text-xs text-green-600 dark:text-green-400 mt-1">Realm ID: {config.realmId}</p>
+                  <p className="text-xs text-green-600 dark:text-green-400 mt-1">Token expira em: {new Date(config.expiresAt).toLocaleString("pt-BR")}</p>
+                  </div>       
+                )}
               </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Histórico de Sincronização</CardTitle>
-            <CardDescription>Últimas sincronizações realizadas com o QuickBooks</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {syncLogs.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">Nenhuma sincronização realizada ainda</p>
-            ) : (
-              <div className="space-y-3">
-                {syncLogs.map((log) => (
-                  <div key={log.id} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline">{log.entityType}</Badge>
-                        <span className="text-sm">{log.action === "create" ? "Criado" : "Atualizado"}</span>
-                        <span className="text-sm text-muted-foreground">ID: {log.entityId}</span>
-                      </div>
-                      {log.errorMessage && <p className="text-sm text-red-600">Erro: {log.errorMessage}</p>}
-                      <p className="text-xs text-muted-foreground">{new Date(log.createdAt).toLocaleString("pt-BR")}</p>
-                    </div>
-                    <div>
-                      {log.status === "success" ? (
-                        <Badge className="bg-green-600">Sucesso</Badge>
-                      ) : log.status === "error" ? (
-                        <Badge variant="destructive">Erro</Badge>
-                      ) : (
-                        <Badge variant="secondary">Pendente</Badge>
-                      )}
-                    </div>
-                  </div>
-                ))}
+              <Button variant="outline" size="sm" onClick={() => handleConnect()}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Reconectar
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 p-4 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800">
+              <XCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+              <div className="flex-1">
+                <p className="font-medium text-yellow-900 dark:text-yellow-100">Não Conectado</p>
+                <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                  Você precisa conectar sua conta QuickBooks para usar os recursos de integração financeira.
+                </p>
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </div>
+          )}
 
+          <Button onClick={handleConnect} disabled={!isConfigured && isLoading}>
+            <ExternalLink className="h-4 w-4 mr-2" />
+            {isConfigured ? "Reconectar QuickBooks" : "Conectar QuickBooks"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {isConfigured && (
         <Card>
           <CardHeader>
             <CardTitle>Sincronização Manual</CardTitle>
-            <CardDescription>Force a sincronização de entidades específicas</CardDescription>
+            <CardDescription>Force a sincronização de dados específicos com o QuickBooks</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Button
-                variant="outline"
-                onClick={() => handleSync("cliente")}
-                disabled={isSyncing || !config?.isConfigured}
-              >
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Button variant="outline" onClick={() => handleSync("cliente")} disabled={isSyncing}>
+                {isSyncing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
                 Sincronizar Clientes
               </Button>
-              <Button
-                variant="outline"
-                onClick={() => handleSync("produto")}
-                disabled={isSyncing || !config?.isConfigured}
-              >
+              <Button variant="outline" onClick={() => handleSync("produto")} disabled={isSyncing}>
+                {isSyncing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
                 Sincronizar Produtos
               </Button>
-              <Button
-                variant="outline"
-                onClick={() => handleSync("pedido")}
-                disabled={isSyncing || !config?.isConfigured}
-              >
+              <Button variant="outline" onClick={() => handleSync("pedido")} disabled={isSyncing}>
+                {isSyncing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
                 Sincronizar Pedidos
+              </Button>
+              <Button variant="outline" onClick={() => handleSync("all")} disabled={isSyncing}>
+                {isSyncing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                Sincronizar Tudo
               </Button>
             </div>
           </CardContent>
         </Card>
-      </div>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Histórico de Sincronização</CardTitle>
+          <CardDescription>Últimas sincronizações realizadas com o QuickBooks</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {syncLogs.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <AlertTriangle className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>Nenhuma sincronização realizada ainda</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {syncLogs.map((log) => (
+                <div
+                  key={log.id}
+                  className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    {log.status === "success" ? (
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                    ) : (
+                      <XCircle className="h-4 w-4 text-red-500" />
+                    )}
+                    <div>
+                      <p className="font-medium text-sm">
+                        {log.action} {log.entityType}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{new Date(log.createdAt).toLocaleString("pt-BR")}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {log.quickbooksId && (
+                      <Badge variant="outline" className="text-xs">
+                        QB: {log.quickbooksId}
+                      </Badge>
+                    )}
+                    <Badge variant={log.status === "success" ? "default" : "destructive"}>{log.status}</Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

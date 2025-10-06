@@ -5,33 +5,27 @@ const prisma = new PrismaClient()
 
 export async function GET() {
   try {
-    console.log("Fetching QuickBooks config...")
-
     const config = await prisma.quickBooksConfig.findFirst({
       orderBy: { createdAt: "desc" },
     })
 
-    console.log("Config found:", config ? "Yes" : "No")
-
     if (!config) {
-      return NextResponse.json({ isConfigured: false }, { status: 200 })
+      return NextResponse.json({ isConfigured: false })
     }
+
+    // Check if token is expired
+    const now = new Date()
+    const isExpired = config.expiresAt < now
 
     return NextResponse.json({
       isConfigured: true,
       realmId: config.realmId,
+      isExpired,
       expiresAt: config.expiresAt,
-      refreshTokenExpiresAt: config.refreshTokenExpiresAt,
     })
   } catch (error) {
-    console.error("Error fetching QuickBooks config:", error)
-    return NextResponse.json(
-      {
-        error: "Internal server error",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 },
-    )
+    console.error("Error fetching tokens:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   } finally {
     await prisma.$disconnect()
   }
@@ -39,35 +33,65 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const data = await request.json()
-    console.log("Saving QuickBooks tokens for realmId:", data.realmId)
+    const { action } = await request.json()
 
-    // Delete existing configs
-    await prisma.quickBooksConfig.deleteMany()
+    if (action === "refresh") {
+      const config = await prisma.quickBooksConfig.findFirst({
+        orderBy: { createdAt: "desc" },
+      })
 
-    // Create new config
-    const config = await prisma.quickBooksConfig.create({
-      data: {
-        realmId: data.realmId,
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token,
-        expiresAt: new Date(Date.now() + data.expires_in * 1000),
-        refreshTokenExpiresAt: new Date(Date.now() + data.x_refresh_token_expires_in * 1000),
-      },
-    })
+      if (!config) {
+        return NextResponse.json({ error: "QuickBooks not configured" }, { status: 400 })
+      }
 
-    console.log("Tokens saved successfully")
+      // Refresh token
+      const tokenUrl = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer"
+      const clientId = process.env.QUICKBOOKS_CLIENT_ID!
+      const clientSecret = process.env.QUICKBOOKS_CLIENT_SECRET!
+      const authHeader = Buffer.from(`${clientId}:${clientSecret}`).toString("base64")
 
-    return NextResponse.json(config)
+      const tokenResponse = await fetch(tokenUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${authHeader}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+        },
+        body: new URLSearchParams({
+          grant_type: "refresh_token",
+          refresh_token: config.refreshToken,
+        }),
+      })
+
+      if (!tokenResponse.ok) {
+        throw new Error("Failed to refresh token")
+      }
+
+      const tokens = await tokenResponse.json()
+
+      // Update config
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + tokens.expires_in * 1000)
+      const refreshTokenExpiresAt = new Date(now.getTime() + tokens.x_refresh_token_expires_in * 1000)
+
+      await prisma.quickBooksConfig.update({
+        where: { id: config.id },
+        data: {
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token,
+          expiresAt,
+          refreshTokenExpiresAt,
+          updatedAt: new Date(),
+        },
+      })
+
+      return NextResponse.json({ success: true })
+    }
+
+    return NextResponse.json({ error: "Invalid action" }, { status: 400 })
   } catch (error) {
-    console.error("Error saving QuickBooks tokens:", error)
-    return NextResponse.json(
-      {
-        error: "Internal server error",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 },
-    )
+    console.error("Token refresh error:", error)
+    return NextResponse.json({ error: "Token refresh failed" }, { status: 500 })
   } finally {
     await prisma.$disconnect()
   }

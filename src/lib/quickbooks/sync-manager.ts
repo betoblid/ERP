@@ -92,9 +92,7 @@ export class QuickBooksSyncManager {
       }
 
       return results
-    } finally {
-      await prisma.$disconnect()
-    }
+    } finally {}
   }
 
   async syncProdutos(produtoId?: number) {
@@ -156,7 +154,7 @@ export class QuickBooksSyncManager {
 
       return results
     } finally {
-      await prisma.$disconnect()
+     
     }
   }
 
@@ -224,7 +222,7 @@ export class QuickBooksSyncManager {
 
       return results
     } finally {
-      await prisma.$disconnect()
+     
     }
   }
 
