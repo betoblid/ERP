@@ -6,35 +6,29 @@ import { PrismaClient } from "@prisma/client"
 
 const prisma = new PrismaClient()
 
+interface QuickBooksConfig {
+  realmId: string
+  accessToken: string
+  refreshToken: string
+  expiresIn: number
+}
+
 export class QuickBooksSyncManager {
   private client: QuickBooksClient
   private customerService: CustomerService
   private itemService: ItemService
   private invoiceService: InvoiceService
 
-  constructor(config: {
-    realmId: string
-    accessToken: string
-    refreshToken: string
-    expiresIn: number
-  }) {
+  constructor(config: QuickBooksConfig) {
     this.client = new QuickBooksClient(config)
     this.customerService = new CustomerService(this.client)
     this.itemService = new ItemService(this.client)
     this.invoiceService = new InvoiceService(this.client)
   }
 
-  async syncAll() {
-    const results = {
-      clientes: await this.syncClientes(),
-      produtos: await this.syncProdutos(),
-      pedidos: await this.syncPedidos(),
-    }
-
-    return results
-  }
-
   async syncClientes(clienteId?: number) {
+    console.log("Iniciando sincronização de clientes...")
+
     try {
       const clientes = clienteId
         ? [await prisma.cliente.findUnique({ where: { id: clienteId } })]
@@ -46,56 +40,38 @@ export class QuickBooksSyncManager {
         if (!cliente) continue
 
         try {
-          let result
           if (cliente.quickbooksId) {
-            // Update existing customer
-            result = await this.customerService.updateCustomer(cliente.quickbooksId, cliente)
+            await this.customerService.updateCustomer(cliente)
+            results.push({ id: cliente.id, status: "updated" })
           } else {
-            // Create new customer
-            result = await this.customerService.createCustomer(cliente)
-
-            // Update local record with QuickBooks ID
-            await prisma.cliente.update({
-              where: { id: cliente.id },
-              data: {
-                quickbooksId: result.Customer.Id,
-                syncedAt: new Date(),
-                syncStatus: "success",
-              },
-            })
+            await this.customerService.createCustomer(cliente)
+            results.push({ id: cliente.id, status: "created" })
           }
-
-          // Log success
-          await this.logSync({
-            entityType: "cliente",
-            entityId: cliente.id,
-            action: cliente.quickbooksId ? "update" : "create",
-            status: "success",
-            quickbooksId: result.Customer.Id,
-          })
-
-          results.push({ id: cliente.id, status: "success" })
         } catch (error) {
-          console.error(`Error syncing cliente ${cliente.id}:`, error)
-
-          // Log error
-          await this.logSync({
-            entityType: "cliente",
-            entityId: cliente.id,
-            action: cliente.quickbooksId ? "update" : "create",
-            status: "error",
-            errorMessage: error instanceof Error ? error.message : "Unknown error",
+          console.error(`Erro ao sincronizar cliente ${cliente.id}:`, error)
+          await prisma.syncLog.create({
+            data: {
+              entityType: "cliente",
+              entityId: cliente.id,
+              action: cliente.quickbooksId ? "update" : "create",
+              status: "error",
+              errorMessage: error instanceof Error ? error.message : "Erro desconhecido",
+            },
           })
-
-          results.push({ id: cliente.id, status: "error" })
+          results.push({ id: cliente.id, status: "error", error: error instanceof Error ? error.message : "Erro" })
         }
       }
 
+      console.log(`Sincronização de clientes concluída: ${results.length} registros processados`)
       return results
-    } finally {}
+    } finally {
+      await prisma.$disconnect()
+    }
   }
 
   async syncProdutos(produtoId?: number) {
+    console.log("Iniciando sincronização de produtos...")
+
     try {
       const produtos = produtoId
         ? [await prisma.produto.findUnique({ where: { id: produtoId }, include: { categoria: true } })]
@@ -107,67 +83,71 @@ export class QuickBooksSyncManager {
         if (!produto) continue
 
         try {
-          let result
           if (produto.quickbooksId) {
-            // Update existing item
-            result = await this.itemService.updateItem(produto.quickbooksId, produto)
+            await this.itemService.updateItem(produto)
+            results.push({ id: produto.id, status: "updated" })
           } else {
-            // Create new item
-            result = await this.itemService.createItem(produto)
-
-            // Update local record with QuickBooks ID
-            await prisma.produto.update({
-              where: { id: produto.id },
-              data: {
-                quickbooksId: result.Item.Id,
-                syncedAt: new Date(),
-                syncStatus: "success",
-              },
-            })
+            await this.itemService.createItem(produto)
+            results.push({ id: produto.id, status: "created" })
           }
-
-          // Log success
-          await this.logSync({
-            entityType: "produto",
-            entityId: produto.id,
-            action: produto.quickbooksId ? "update" : "create",
-            status: "success",
-            quickbooksId: result.Item.Id,
-          })
-
-          results.push({ id: produto.id, status: "success" })
         } catch (error) {
-          console.error(`Error syncing produto ${produto.id}:`, error)
-
-          // Log error
-          await this.logSync({
-            entityType: "produto",
-            entityId: produto.id,
-            action: produto.quickbooksId ? "update" : "create",
-            status: "error",
-            errorMessage: error instanceof Error ? error.message : "Unknown error",
+          console.error(`Erro ao sincronizar produto ${produto.id}:`, error)
+          await prisma.syncLog.create({
+            data: {
+              entityType: "produto",
+              entityId: produto.id,
+              action: produto.quickbooksId ? "update" : "create",
+              status: "error",
+              errorMessage: error instanceof Error ? error.message : "Erro desconhecido",
+            },
           })
-
-          results.push({ id: produto.id, status: "error" })
+          results.push({ id: produto.id, status: "error", error: error instanceof Error ? error.message : "Erro" })
         }
       }
 
+      console.log(`Sincronização de produtos concluída: ${results.length} registros processados`)
       return results
     } finally {
-     
+      await prisma.$disconnect()
     }
   }
 
   async syncPedidos(pedidoId?: number) {
+    console.log("Iniciando sincronização de pedidos...")
+
     try {
       const pedidos = pedidoId
         ? [
             await prisma.pedido.findUnique({
-              where: { id: Number.parseInt(pedidoId.toString()) },
-              include: { cliente: true, itens: { include: { produto: true } } },
+              where: { id: pedidoId },
+              include: {
+                cliente: true,
+                itens: {
+                  include: {
+                    produto: {
+                      include: {
+                        categoria: true,
+                      },
+                    },
+                  },
+                },
+              },
             }),
           ]
-        : await prisma.pedido.findMany({ include: { cliente: true, itens: { include: { produto: true } } } })
+        : await prisma.pedido.findMany({
+            include: {
+              cliente: true,
+              itens: {
+                include: {
+                  produto: {
+                    include: {
+                      categoria: true,
+                    },
+                  },
+                },
+              },
+            },
+          })
 
       const results = []
 
@@ -175,69 +155,82 @@ export class QuickBooksSyncManager {
         if (!pedido) continue
 
         try {
-          let result
-          if (pedido.quickbooksId) {
-            // Update existing invoice
-            result = await this.invoiceService.updateInvoice(pedido.quickbooksId, pedido)
-          } else {
-            // Create new invoice
-            result = await this.invoiceService.createInvoice(pedido)
-
-            // Update local record with QuickBooks ID
-            await prisma.pedido.update({
-              where: { id: pedido.id },
-              data: {
-                quickbooksId: result.Invoice.Id,
-                syncedAt: new Date(),
-                syncStatus: "success",
-              },
-            })
+          if (!pedido.cliente.quickbooksId) {
+            await this.customerService.createCustomer(pedido.cliente)
           }
 
-          // Log success
-          await this.logSync({
-            entityType: "pedido",
-            entityId: pedido.id,
-            action: pedido.quickbooksId ? "update" : "create",
-            status: "success",
-            quickbooksId: result.Invoice.Id,
-          })
+          for (const item of pedido.itens) {
+            if (!item.produto.quickbooksId) {
+              await this.itemService.createItem(item.produto)
+            }
+          }
 
-          results.push({ id: pedido.id, status: "success" })
+          if (pedido.quickbooksId) {
+            await this.invoiceService.updateInvoice(pedido as any)
+            results.push({ id: pedido.id, status: "updated" })
+          } else {
+            await this.invoiceService.createInvoice(pedido as any)
+            results.push({ id: pedido.id, status: "created" })
+          }
         } catch (error) {
-          console.error(`Error syncing pedido ${pedido.id}:`, error)
-
-          // Log error
-          await this.logSync({
-            entityType: "pedido",
-            entityId: pedido.id,
-            action: pedido.quickbooksId ? "update" : "create",
-            status: "error",
-            errorMessage: error instanceof Error ? error.message : "Unknown error",
+          console.error(`Erro ao sincronizar pedido ${pedido.id}:`, error)
+          await prisma.syncLog.create({
+            data: {
+              entityType: "pedido",
+              entityId: pedido.id,
+              action: pedido.quickbooksId ? "update" : "create",
+              status: "error",
+              errorMessage: error instanceof Error ? error.message : "Erro desconhecido",
+            },
           })
-
-          results.push({ id: pedido.id, status: "error" })
+          results.push({ id: pedido.id, status: "error", error: error instanceof Error ? error.message : "Erro" })
         }
       }
 
+      console.log(`Sincronização de pedidos concluída: ${results.length} registros processados`)
       return results
     } finally {
-     
+      await prisma.$disconnect()
     }
   }
 
-  private async logSync(data: {
-    entityType: string
-    entityId: number
-    action: string
-    status: string
-    quickbooksId?: string
-    errorMessage?: string
-  }) {
-    try {
-      await prisma.syncLog.create({ data: data as any })
-    } catch (error) {
-      console.error("Error creating sync log:", error)
+  async syncAll() {
+    console.log("Iniciando sincronização completa...")
+
+    const clientesResult = await this.syncClientes()
+    const produtosResult = await this.syncProdutos()
+    const pedidosResult = await this.syncPedidos()
+
+    return {
+      clientes: clientesResult,
+      produtos: produtosResult,
+      pedidos: pedidosResult,
+    }
+  }
+
+  async syncEntity(entityType: string, entityId: number) {
+    switch (entityType) {
+      case "cliente":
+        return await this.syncClientes(entityId)
+      case "produto":
+        return await this.syncProdutos(entityId)
+      case "pedido":
+        return await this.syncPedidos(entityId)
+      default:
+        throw new Error(`Tipo de entidade inválido: ${entityType}`)
+    }
+  }
+
+  async syncAllOfType(entityType: string) {
+    switch (entityType) {
+      case "cliente":
+        return await this.syncClientes()
+      case "produto":
+        return await this.syncProdutos()
+      case "pedido":
+        return await this.syncPedidos()
+      default:
+        throw new Error(`Tipo de entidade inválido: ${entityType}`)
     }
   }
 }

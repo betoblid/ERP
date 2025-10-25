@@ -43,7 +43,8 @@ export default function QuickBooksConfigPage() {
     try {
       const response = await fetch("/api/quickbooks/tokens")
       const data = await response.json()
-      setIsConfigured(data.isConfigured)
+      setIsConfigured(data.isActive)
+      console.log("Config data:", data)
       setConfig(data)
     } catch (error) {
       console.error("Error checking configuration:", error)

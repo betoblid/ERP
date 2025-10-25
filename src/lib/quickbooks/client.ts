@@ -1,160 +1,140 @@
-import { PrismaClient } from "@prisma/client"
+import axios, { type AxiosInstance } from "axios"
+import { prisma } from "@/lib/prisma"
 
-const prisma = new PrismaClient()
-
-interface QuickBooksConfig {
-  realmId: string
+interface QuickBooksTokens {
   accessToken: string
   refreshToken: string
-  expiresIn: number
+  realmId: string
+  expiresAt: Date
 }
 
 export class QuickBooksClient {
-  private config: QuickBooksConfig
-  private baseUrl: string
+  private axiosInstance: AxiosInstance
+  private tokens: QuickBooksTokens | null = null
 
-  constructor(config: QuickBooksConfig) {
-    this.config = config
-    this.baseUrl =
+  constructor() {
+    const baseURL =
       process.env.QUICKBOOKS_ENVIRONMENT === "production"
-        ? "https://quickbooks.api.intuit.com/v3/company"
-        : "https://sandbox-quickbooks.api.intuit.com/v3/company"
-  }
+        ? "https://quickbooks.api.intuit.com"
+        : "https://sandbox-quickbooks.api.intuit.com"
 
-  private async ensureValidToken(): Promise<string> {
-    // Check if token is expired
-    if (this.config.expiresIn <= 60) {
-      console.log("Token expired, refreshing...")
-      await this.refreshToken()
-    }
-
-    return this.config.accessToken
-  }
-
-  private async refreshToken(): Promise<void> {
-    const tokenUrl = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer"
-    const clientId = process.env.QUICKBOOKS_CLIENT_ID!
-    const clientSecret = process.env.QUICKBOOKS_CLIENT_SECRET!
-    const authHeader = Buffer.from(`${clientId}:${clientSecret}`).toString("base64")
-
-    const response = await fetch(tokenUrl, {
-      method: "POST",
+    this.axiosInstance = axios.create({
+      baseURL,
       headers: {
-        Authorization: `Basic ${authHeader}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-        Accept: "application/json",
-      },
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: this.config.refreshToken,
-      }),
-    })
-
-    if (!response.ok) {
-      throw new Error("Failed to refresh token")
-    }
-
-    const tokens = await response.json()
-
-    // Update config in database
-    const config = await prisma.quickBooksConfig.findFirst({
-      where: { realmId: this.config.realmId },
-    })
-
-    if (config) {
-      const now = new Date()
-      const expiresAt = new Date(now.getTime() + tokens.expires_in * 1000)
-      const refreshTokenExpiresAt = new Date(now.getTime() + tokens.x_refresh_token_expires_in * 1000)
-
-      await prisma.quickBooksConfig.update({
-        where: { id: config.id },
-        data: {
-          accessToken: tokens.access_token,
-          refreshToken: tokens.refresh_token,
-          expiresAt,
-          refreshTokenExpiresAt,
-        },
-      })
-
-      this.config.accessToken = tokens.access_token
-      this.config.refreshToken = tokens.refresh_token
-      this.config.expiresIn = tokens.expires_in
-    }
-  }
-
-  async get<T = any>(endpoint: string): Promise<T> {
-    const token = await this.ensureValidToken()
-    const url = `${this.baseUrl}/${this.config.realmId}${endpoint}`
-
-    console.log(`GET ${url}`)
-
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/json",
-      },
-    })
-
-    if (!response.ok) {
-      const error = await response.text()
-      console.error(`QuickBooks API error:`, error)
-      throw new Error(`QuickBooks API error: ${error}`)
-    }
-
-    return response.json()
-  }
-
-  async post<T = any>(endpoint: string, data: any): Promise<T> {
-    const token = await this.ensureValidToken()
-    const url = `${this.baseUrl}/${this.config.realmId}${endpoint}`
-
-    console.log(`POST ${url}`, JSON.stringify(data, null, 2))
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/json",
         "Content-Type": "application/json",
-      },
-      body: JSON.stringify(data),
-    })
-
-    if (!response.ok) {
-      const error = await response.text()
-      console.error(`QuickBooks API error:`, error)
-      throw new Error(`QuickBooks API error: ${error}`)
-    }
-
-    return response.json()
-  }
-
-  async put<T = any>(endpoint: string, data: any): Promise<T> {
-    return this.post(endpoint, data)
-  }
-
-  async query<T = any>(queryString: string): Promise<T[]> {
-    const token = await this.ensureValidToken()
-    const url = `${this.baseUrl}/${this.config.realmId}/query?query=${encodeURIComponent(queryString)}`
-
-    console.log(`QUERY ${queryString}`)
-
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
         Accept: "application/json",
       },
     })
 
-    if (!response.ok) {
-      const error = await response.text()
-      console.error(`QuickBooks API error:`, error)
-      throw new Error(`QuickBooks API error: ${error}`)
+    this.axiosInstance.interceptors.request.use(async (config) => {
+      await this.ensureValidToken()
+      if (this.tokens?.accessToken) {
+        config.headers.Authorization = `Bearer ${this.tokens.accessToken}`
+      }
+      return config
+    })
+
+    this.axiosInstance.interceptors.response.use(
+      (response) => response,
+      async (error) => {
+        if (error.response?.status === 401) {
+          await this.refreshAccessToken()
+          return this.axiosInstance.request(error.config)
+        }
+        return Promise.reject(error)
+      },
+    )
+  }
+
+  private async ensureValidToken() {
+    if (!this.tokens) {
+      await this.loadTokens()
     }
 
-    const result = await response.json()
-    return result.QueryResponse?.Customer || result.QueryResponse?.Item || result.QueryResponse?.Invoice || []
+    if (this.tokens && new Date() >= this.tokens.expiresAt) {
+      await this.refreshAccessToken()
+    }
+  }
+
+  private async loadTokens() {
+    const config = await prisma.quickBooksConfig.findFirst({
+      where: { isActive: true },
+      orderBy: { createdAt: "desc" },
+    })
+
+    if (!config) {
+      throw new Error("QuickBooks não configurado. Configure em /configuracoes/quickbooks")
+    }
+
+    this.tokens = {
+      accessToken: config.accessToken,
+      refreshToken: config.refreshToken,
+      realmId: config.realmId,
+      expiresAt: config.expiresAt,
+    }
+  }
+
+  private async refreshAccessToken() {
+    if (!this.tokens?.refreshToken) {
+      throw new Error("Token de refresh não disponível")
+    }
+
+    const credentials = Buffer.from(
+      `${process.env.QUICKBOOKS_CLIENT_ID}:${process.env.QUICKBOOKS_CLIENT_SECRET}`,
+    ).toString("base64")
+
+    const response = await axios.post(
+      "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
+      new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: this.tokens.refreshToken,
+      }).toString(),
+      {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Authorization: `Basic ${credentials}`,
+        },
+      },
+    )
+
+    const { access_token, refresh_token, expires_in } = response.data
+
+    this.tokens = {
+      accessToken: access_token,
+      refreshToken: refresh_token,
+      realmId: this.tokens.realmId,
+      expiresAt: new Date(Date.now() + expires_in * 1000),
+    }
+
+    await prisma.quickBooksConfig.updateMany({
+      where: { realmId: this.tokens.realmId },
+      data: {
+        accessToken: access_token,
+        refreshToken: refresh_token,
+        expiresAt: this.tokens.expiresAt,
+      },
+    })
+  }
+
+  async get(endpoint: string) {
+    await this.ensureValidToken()
+    const response = await this.axiosInstance.get(`/v3/company/${this.tokens?.realmId}${endpoint}`)
+    return response.data
+  }
+
+  async post(endpoint: string, data: any) {
+    await this.ensureValidToken()
+    const response = await this.axiosInstance.post(`/v3/company/${this.tokens?.realmId}${endpoint}`, data)
+    return response.data
+  }
+
+  async query(query: string) {
+    return this.get(`/query?query=${encodeURIComponent(query)}&minorversion=75`)
+  }
+
+  getRealmId() {
+    return this.tokens?.realmId
   }
 }
+
+export const qbClient = new QuickBooksClient()

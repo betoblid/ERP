@@ -7,20 +7,57 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Cliente {
-  id             Int       @id @default(autoincrement())
+model Usuario {
+  id            Int          @id @default(autoincrement())
+  username      String       @unique
+  email         String       @unique
+  password      String
+  role          String       @default("usuario")
+  ativo         Boolean      @default(true)
+  funcionarioId Int?         @unique
+  funcionario   Funcionario? @relation(fields: [funcionarioId], references: [id])
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@map("usuarios")
+}
+
+model Funcionario {
+  id             Int              @id @default(autoincrement())
   nome           String
-  email          String    @unique
+  cpf            String           @unique
+  cargo          String
+  email          String           @unique
+  telefone       String?
+  jornadaInicio  String
+  jornadaFim     String
+  quickbooksId   String?          @unique
+  syncedAt       DateTime?
+  syncStatus     String?          @default("pending")
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  usuario        Usuario?
+  pontos         Ponto[]
+  ordensServico  OrdemServico[]
+
+  @@map("funcionarios")
+}
+
+model Cliente {
+  id             Int              @id @default(autoincrement())
+  nome           String
+  email          String
   telefone       String
   endereco       String
-  tipoDocumento  String    @map("tipo_documento")
-  documento      String    @unique
-  quickbooksId   String?   @map("quickbooks_id")
-  syncedAt       DateTime? @map("synced_at")
-  syncStatus     String?   @default("pending") @map("sync_status")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
+  documento      String           @unique
+  tipoDocumento  String
+  quickbooksId   String?          @unique
+  syncedAt       DateTime?
+  syncStatus     String?          @default("pending")
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
   pedidos        Pedido[]
+  ordensServico  OrdemServico[]
 
   @@map("clientes")
 }
@@ -28,9 +65,10 @@ model Cliente {
 model Categoria {
   id        Int       @id @default(autoincrement())
   nome      String    @unique
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  descricao String?
   produtos  Produto[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   @@map("categorias")
 }
@@ -38,90 +76,222 @@ model Categoria {
 model Produto {
   id             Int          @id @default(autoincrement())
   nome           String
+  codigo         String       @unique
   descricao      String?
   preco          Float
-  estoqueAtual   Int          @default(0) @map("estoque_atual")
-  estoqueMinimo  Int          @default(0) @map("estoque_minimo")
-  categoriaId    Int          @map("categoria_id")
-  quickbooksId   String?      @map("quickbooks_id")
-  syncedAt       DateTime?    @map("synced_at")
-  syncStatus     String?      @default("pending") @map("sync_status")
-  createdAt      DateTime     @default(now()) @map("created_at")
-  updatedAt      DateTime     @updatedAt @map("updated_at")
+  estoqueAtual   Int          @default(0)
+  estoqueMinimo  Int          @default(0)
+  categoriaId    Int
   categoria      Categoria    @relation(fields: [categoriaId], references: [id])
-  itensPedido    ItemPedido[]
+  quickbooksId   String?      @unique
+  syncedAt       DateTime?
+  syncStatus     String?      @default("pending")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  pedidoItens    PedidoItem[]
 
   @@map("produtos")
 }
 
+model Motorista {
+  id                 Int       @id @default(autoincrement())
+  primeiroNome       String
+  nomeCompleto       String
+  celular            String
+  operadora          String?
+  cpf                String    @unique
+  email              String    @unique
+  dataNascimento     DateTime
+  rg                 String    @unique
+  orgaoEmissor       String
+  ufEmissor          String
+  municipioNasc      String
+  dataEmissaoRg      DateTime
+  telefone           String?
+  nomeMae            String
+  nomePai            String
+  pis                String?
+  pais               String    @default("BRASIL")
+  sexo               String
+  cep                String
+  endereco           String
+  bairro             String
+  cidade             String
+  numero             String
+  complemento        String?
+  resideDesdeMes     Int
+  resideDesdeAno     Int
+  numeroHabilitacao  String    @unique
+  cidadeCnh          String
+  categoriaCnh       String
+  dataEmissaoCnh     DateTime
+  validadeCnh        DateTime
+  dataPrimeiraCnh    DateTime
+  codSegurancaCnh    String
+  anexoCnh           String?
+  ativo              Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  entregas           Entrega[]
+
+  @@map("motoristas")
+}
+
+model Veiculo {
+  id                       Int       @id @default(autoincrement())
+  placa                    String    @unique
+  renavam                  String    @unique
+  marca                    String
+  modelo                   String
+  anoFabricacao            Int
+  anoModelo                Int
+  cor                      String
+  dataCompra               DateTime
+  baseOperacao             String
+  tipoVeiculo              String
+  categoriaFrota           String
+  seguradora               String?
+  vigencia                 DateTime?
+  taraVeiculo              Float?
+  capacidadeCarga          Float?
+  capacidadeCargaM3        Float?
+  tipoCarroceria           String?
+  ufEmplacada              String
+  tipoRodado               String?
+  certificadoCronotacografo String?
+  medidasRodado            String?
+  consumoKmLitro           Float?
+  kmMaximoRota             Float?
+  capacidadeTanque         Float?
+  tipoResponsavel          String?
+  unidadeProprietaria      String?
+  financiamento            String?
+  instituicaoFinanceira    String?
+  tabela                   String?
+  valorEntrega             Float?
+  valorKmRodado            Float?
+  valorDiaria              Float?
+  ativo                    Boolean   @default(true)
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+  entregas                 Entrega[]
+
+  @@map("veiculos")
+}
+
 model Pedido {
   id             Int          @id @default(autoincrement())
-  clienteId      Int          @map("cliente_id")
-  status         String       @default("agendado")
+  numero         String       @unique
+  clienteId      Int
+  cliente        Cliente      @relation(fields: [clienteId], references: [id])
   data           DateTime
   horario        String
   endereco       String
   observacao     String?
-  quickbooksId   String?      @map("quickbooks_id")
-  syncedAt       DateTime?    @map("synced_at")
-  syncStatus     String?      @default("pending") @map("sync_status")
-  createdAt      DateTime     @default(now()) @map("created_at")
-  updatedAt      DateTime     @updatedAt @map("updated_at")
-  cliente        Cliente      @relation(fields: [clienteId], references: [id])
-  itens          ItemPedido[]
+  status         String       @default("agendado")
+  quickbooksId   String?      @unique
+  estimateId     Int?         @unique
+  syncedAt       DateTime?
+  syncStatus     String?      @default("pending")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  itens          PedidoItem[]
+  entrega        Entrega?
 
   @@map("pedidos")
 }
 
-model ItemPedido {
-  id            Int      @id @default(autoincrement())
-  pedidoId      Int      @map("pedido_id")
-  produtoId     Int      @map("produto_id")
-  quantidade    Int
-  precoUnitario Float    @map("preco_unitario")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
-  pedido        Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
-  produto       Produto  @relation(fields: [produtoId], references: [id])
+model PedidoItem {
+  id             String   @id @default(cuid())
+  pedidoId       Int
+  pedido         Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  produtoId      Int
+  produto        Produto  @relation(fields: [produtoId], references: [id])
+  quantidade     Int
+  precoUnitario  Float
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  @@map("itens_pedido")
+  @@map("pedido_itens")
 }
 
-model Funcionario {
-  id        Int      @id @default(autoincrement())
-  nome      String
-  email     String   @unique
-  telefone  String
-  cargo     String
-  salario   Float
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+model Entrega {
+  id                   Int        @id @default(autoincrement())
+  pedidoId             Int        @unique
+  pedido               Pedido     @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  estimateId           Int?
+  quickbooksInvoiceId  String?
+  dataEntrega          DateTime
+  horarioEntrega       String
+  motoristaId          Int
+  motorista            Motorista  @relation(fields: [motoristaId], references: [id])
+  veiculoId            Int
+  veiculo              Veiculo    @relation(fields: [veiculoId], references: [id])
+  status               String     @default("agendada")
+  observacoes          String?
+  nomeRecebedor        String?
+  identidadeRecebedor  String?
+  dataRecebimento      DateTime?
+  fotoComprovante      String?
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
 
-  @@map("funcionarios")
+  @@map("entregas")
+}
+
+model Ponto {
+  id             Int         @id @default(autoincrement())
+  funcionarioId  Int
+  funcionario    Funcionario @relation(fields: [funcionarioId], references: [id])
+  tipo           String
+  timestamp      DateTime    @default(now())
+  createdAt      DateTime    @default(now())
+
+  @@map("pontos")
+}
+
+model OrdemServico {
+  id             Int         @id @default(autoincrement())
+  clienteId      Int
+  cliente        Cliente     @relation(fields: [clienteId], references: [id])
+  funcionarioId  Int
+  funcionario    Funcionario @relation(fields: [funcionarioId], references: [id])
+  descricao      String
+  status         String      @default("pendente")
+  dataInicio     DateTime
+  dataFim        DateTime?
+  observacoes    String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@map("ordens_servico")
 }
 
 model QuickBooksConfig {
-  id                      Int      @id @default(autoincrement())
-  realmId                 String   @unique @map("realm_id")
-  accessToken             String   @map("access_token")
-  refreshToken            String   @map("refresh_token")
-  expiresAt               DateTime @map("expires_at")
-  refreshTokenExpiresAt   DateTime @map("refresh_token_expires_at")
-  createdAt               DateTime @default(now()) @map("created_at")
-  updatedAt               DateTime @updatedAt @map("updated_at")
+  id                     Int      @id @default(autoincrement())
+  realmId                String   @unique
+  accessToken            String   @db.Text
+  refreshToken           String   @db.Text
+  expiresIn              Int      @default(3600)
+  expiresAt              DateTime
+  refreshTokenExpiresAt  DateTime
+  isActive               Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   @@map("quickbooks_config")
 }
 
 model SyncLog {
-  id            Int      @id @default(autoincrement())
-  entityType    String   @map("entity_type")
-  entityId      Int      @map("entity_id")
-  action        String
-  status        String
-  quickbooksId  String?  @map("quickbooks_id")
-  errorMessage  String?  @map("error_message")
-  createdAt     DateTime @default(now()) @map("created_at")
+  id             Int      @id @default(autoincrement())
+  entityType     String
+  entityId       Int
+  action         String
+  status         String
+  quickbooksId   String?
+  errorMessage   String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@map("sync_logs")
 }

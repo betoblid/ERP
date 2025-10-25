@@ -4,28 +4,24 @@ import { PrismaClient } from "@prisma/client"
 const prisma = new PrismaClient()
 
 export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url)
+  const code = searchParams.get("code")
+  const realmId = searchParams.get("realmId")
+  const state = searchParams.get("state")
+  const error = searchParams.get("error")
+
+  if (error) {
+    console.error("Erro no OAuth:", error)
+    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_API_URL}/configuracoes/quickbooks?error=${error}`)
+  }
+
+  if (!code || !realmId) {
+    console.error("Código ou realmId ausente")
+    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_API_URL}/configuracoes/quickbooks?error=missing_params`)
+  }
+
   try {
-    const { searchParams } = new URL(request.url)
-    const code = searchParams.get("code")
-    const realmId = searchParams.get("realmId")
-    const error = searchParams.get("error")
-
-    console.log("OAuth callback received:", { code: !!code, realmId, error })
-
-    if (error) {
-      console.error("OAuth error:", error)
-      return NextResponse.redirect(new URL(`/configuracoes/quickbooks?error=${encodeURIComponent(error)}`, request.url))
-    }
-
-    if (!code || !realmId) {
-      return NextResponse.redirect(new URL("/configuracoes/quickbooks?error=missing_parameters", request.url))
-    }
-
-    // Exchange code for tokens
-    const tokenUrl =
-      process.env.QUICKBOOKS_ENVIRONMENT === "production"
-        ? "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer"
-        : "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer"
+    console.log("Trocando código por tokens...")
 
     const clientId = process.env.QUICKBOOKS_CLIENT_ID!
     const clientSecret = process.env.QUICKBOOKS_CLIENT_SECRET!
@@ -33,37 +29,32 @@ export async function GET(request: Request) {
 
     const authHeader = Buffer.from(`${clientId}:${clientSecret}`).toString("base64")
 
-    console.log("Exchanging code for tokens...")
-
-    const tokenResponse = await fetch(tokenUrl, {
+    const tokenResponse = await fetch("https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer", {
       method: "POST",
       headers: {
         Authorization: `Basic ${authHeader}`,
-        "Content-Type": "application/x-www-form-urlencoded",
         Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
       },
       body: new URLSearchParams({
         grant_type: "authorization_code",
-        code,
+        code: code,
         redirect_uri: redirectUri,
       }),
     })
 
     if (!tokenResponse.ok) {
       const errorText = await tokenResponse.text()
-      console.error("Token exchange failed:", errorText)
-      throw new Error(`Token exchange failed: ${errorText}`)
+      console.error("Erro ao trocar código por tokens:", errorText)
+      throw new Error("Falha ao obter tokens")
     }
 
     const tokens = await tokenResponse.json()
-    console.log("Tokens received successfully")
 
-    // Calculate expiration dates
     const now = new Date()
     const expiresAt = new Date(now.getTime() + tokens.expires_in * 1000)
     const refreshTokenExpiresAt = new Date(now.getTime() + tokens.x_refresh_token_expires_in * 1000)
 
-    // Save or update QuickBooks config
     const existingConfig = await prisma.quickBooksConfig.findFirst({
       where: { realmId },
     })
@@ -76,7 +67,7 @@ export async function GET(request: Request) {
           refreshToken: tokens.refresh_token,
           expiresAt,
           refreshTokenExpiresAt,
-          updatedAt: new Date(),
+          isActive: true,
         },
       })
     } else {
@@ -87,22 +78,17 @@ export async function GET(request: Request) {
           refreshToken: tokens.refresh_token,
           expiresAt,
           refreshTokenExpiresAt,
+          isActive: true,
         },
       })
     }
 
-    console.log("QuickBooks config saved successfully")
+    console.log("Tokens salvos com sucesso!")
 
-    // Redirect to success page
-    return NextResponse.redirect(new URL("/configuracoes/quickbooks?success=true", request.url))
+    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_API_URL}/configuracoes/quickbooks?success=true`)
   } catch (error) {
-    console.error("OAuth callback error:", error)
-    return NextResponse.redirect(
-      new URL(
-        `/configuracoes/quickbooks?error=${encodeURIComponent(error instanceof Error ? error.message : "unknown_error")}`,
-        request.url,
-      ),
-    )
+    console.error("Erro ao processar OAuth:", error)
+    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_API_URL}/configuracoes/quickbooks?error=auth_failed`)
   } finally {
     await prisma.$disconnect()
   }

@@ -20,24 +20,25 @@ const routes = [
     href: "/",
     color: "text-sky-500",
   },
+  // {
+  //   label: "Funcionários",
+  //   icon: Users,
+  //   href: "/funcionarios",
+  //   color: "text-violet-500",
+  //   sub: [
+  //     {
+  //       label: "Funcionários",
+  //       href: "/funcionarios",
+  //     },
+  //     {
+  //       label: "Novo Funcionário",
+  //       href: "/funcionarios/cadastro",
+  //     },
+  //   ]
+  // },
+ 
   {
-    label: "Funcionários",
-    icon: Users,
-    href: "/funcionarios",
-    color: "text-violet-500",
-    sub: [
-      {
-        label: "Funcionários",
-        href: "/funcionarios",
-      },
-      {
-        label: "Novo Funcionário",
-        href: "/funcionarios/cadastro",
-      },
-    ]
-  },
-  {
-    label: "Produtos",
+    label: "Estoque",
     icon: Package,
     href: "/produtos",
     color: "text-pink-700",
@@ -49,7 +50,23 @@ const routes = [
         {
           label: "Novo Produto",
           href: "/produtos/cadastro",
+        },  
+        {
+          label: "categoria",
+          href: "/categorias",
         },
+        {
+          label: "Nova Categoria",
+          href: "/categorias/cadastro",
+        }, 
+        {
+          label: "Entrada de Estoque",
+          href: "/categorias",
+        },
+        {
+          label: "Saida de Estoque",
+          href: "/categorias/cadastro",
+        }, 
       ]
   },
   {
@@ -62,15 +79,15 @@ const routes = [
         label: "Pedido",
         href: "/pedido",
       },
-      {
+     {
         label: "Novo Pedido",
         href: "/pedido/cadastro",
-      },
-      {
-        label: "Entregas",
-        href: "/entregas",
-      },
-    ]
+     },
+     {
+         label: "Entregas",
+         href: "/entregas",
+       },
+     ]
   },
   {
     label: "Clientes",
@@ -88,11 +105,17 @@ const routes = [
         },
       ]
   },
+  // {
+  //   label: "Ponto",
+  //   icon: Clock,
+  //   href: "/ponto",
+  //   color: "text-rose-500",
+  // },
   {
-    label: "Ponto",
-    icon: Clock,
-    href: "/ponto",
-    color: "text-rose-500",
+    label: "estimate",
+    icon: Calendar,
+    href: "/orcamentos",
+    color: "text-blue-500",
   },
   {
     label: "Agenda",
@@ -100,11 +123,17 @@ const routes = [
     href: "/agenda",
     color: "text-blue-500",
   },
+  // {
+  //   label: "Relatórios",
+  //   icon: BarChart4,
+  //   href: "/relatorios",
+  //   color: "text-yellow-500",
+  // },
   {
-    label: "Relatórios",
-    icon: BarChart4,
-    href: "/relatorios",
-    color: "text-yellow-500",
+    label: "Configuração quickbooks",
+    icon: Home,
+    href: "/configuracoes/quickbooks",
+    color: "text-sky-500",
   },
 ]
 

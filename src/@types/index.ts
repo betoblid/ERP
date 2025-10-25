@@ -17,9 +17,10 @@ export interface Produto {
   id: number
   nome: string
   codigo: string
+  descricao?: string
   preco: number
-  estoque: number
   estoqueAtual: number
+  estoqueMinimo: number
   categoriaId: number
   categoria: Categoria
   quickbooksId?: string
@@ -35,6 +36,86 @@ export interface Categoria {
   descricao?: string
 }
 
+export interface Motorista {
+  id: number
+  primeiroNome: string
+  nomeCompleto: string
+  celular: string
+  operadora?: string
+  cpf: string
+  email: string
+  dataNascimento: Date
+  rg: string
+  orgaoEmissor: string
+  ufEmissor: string
+  municipioNasc: string
+  dataEmissaoRg: Date
+  telefone?: string
+  nomeMae: string
+  nomePai: string
+  pis?: string
+  pais: string
+  sexo: "masculino" | "feminino" | "outro"
+  cep: string
+  endereco: string
+  bairro: string
+  cidade: string
+  numero: string
+  complemento?: string
+  resideDesdeMes: number
+  resideDesdeAno: number
+  numeroHabilitacao: string
+  cidadeCnh: string
+  categoriaCnh: string
+  dataEmissaoCnh: Date
+  validadeCnh: Date
+  dataPrimeiraCnh: Date
+  codSegurancaCnh: string
+  anexoCnh?: string
+  ativo: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface Veiculo {
+  id: number
+  placa: string
+  renavam: string
+  marca: string
+  modelo: string
+  anoFabricacao: number
+  anoModelo: number
+  cor: string
+  dataCompra: Date
+  baseOperacao: string
+  tipoVeiculo: "vuc" | "van" | "iveco" | "fiorino" | "moto" | "hr" | "1/4" | "toco" | "truck"
+  categoriaFrota: string
+  seguradora?: string
+  vigencia?: Date
+  taraVeiculo?: number
+  capacidadeCarga?: number
+  capacidadeCargaM3?: number
+  tipoCarroceria?: string
+  ufEmplacada: string
+  tipoRodado?: string
+  certificadoCronotacografo?: string
+  medidasRodado?: string
+  consumoKmLitro?: number
+  kmMaximoRota?: number
+  capacidadeTanque?: number
+  tipoResponsavel?: string
+  unidadeProprietaria?: string
+  financiamento?: string
+  instituicaoFinanceira?: string
+  tabela?: string
+  valorEntrega?: number
+  valorKmRodado?: number
+  valorDiaria?: number
+  ativo: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
 export interface Pedido {
   id: number
   numero: string
@@ -46,7 +127,9 @@ export interface Pedido {
   observacao?: string
   status: "agendado" | "em_andamento" | "concluido" | "cancelado" | "entregue" | "retirado"
   itens: PedidoItem[]
+  entrega?: Entrega
   quickbooksId?: string
+  estimateId?: number
   syncedAt?: Date
   syncStatus?: "pending" | "synced" | "error"
   createdAt: Date
@@ -60,6 +143,28 @@ export interface PedidoItem {
   produto?: Produto
   quantidade: number
   precoUnitario: number
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface Entrega {
+  id: number
+  pedidoId: number
+  pedido?: Pedido
+  estimateId?: number
+  quickbooksInvoiceId?: string
+  dataEntrega: string
+  horarioEntrega: string
+  motoristaId: number
+  motorista?: Motorista
+  veiculoId: number
+  veiculo?: Veiculo
+  status: "agendada" | "em_rota" | "entregue" | "cancelada"
+  observacoes?: string
+  nomeRecebedor?: string
+  identidadeRecebedor?: string
+  dataRecebimento?: Date
+  fotoComprovante?: string
   createdAt: Date
   updatedAt: Date
 }
@@ -167,7 +272,7 @@ export interface QuickBooksInvoice {
 
 export interface SyncLog {
   id: number
-  entityType: "cliente" | "produto" | "pedido"
+  entityType: "cliente" | "produto" | "pedido" | "estimate"
   entityId: number
   action: "create" | "update" | "delete"
   status: "pending" | "success" | "error"
@@ -184,7 +289,7 @@ export interface QuickBooksConfig {
   refreshToken: string
   expiresAt: Date
   refreshTokenExpiresAt: Date
-  isConfigured: boolean
+  isActive: boolean
   createdAt: Date
   updatedAt: Date
 }

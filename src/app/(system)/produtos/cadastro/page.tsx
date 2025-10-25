@@ -1,201 +1,208 @@
 "use client"
 
-import type React from "react"
-
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, Save, Barcode } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import { ArrowLeft, Save, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
-import api from "@/lib/api"
-import { Categoria } from "@/@types"
 
-export default function CadastroProduto() {
+const formSchema = z.object({
+  Name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
+  QtyOnHand: z.coerce.number().min(0, "Quantidade não pode ser negativa"),
+  InvStartDate: z.string().min(1, "Data é obrigatória"),
+  TrackQtyOnHand: z.boolean().default(true),
+  Active: z.boolean().default(true),
+  UnitPrice: z.coerce.number().min(0, "Preço não pode ser negativo"),
+  PurchaseCost: z.coerce.number().min(0, "Custo não pode ser negativo"),
+  Description: z.string().optional(),
+  PurchaseDesc: z.string().optional(),
+  Taxable: z.boolean().default(true),
+})
+
+type FormValues = z.infer<typeof formSchema>
+
+export default function CadastroProdutoPage() {
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [listCategory, setListCategory] = useState<Categoria[] | []>([])
 
-  useEffect(() => {
-    const getCategoryAll = async () => {
-      const response = await api.get("/categoria")
-
-
-
-      setListCategory(response.data)
-    }
-    getCategoryAll();
-
-
-  }, [])
-
-  const [formData, setFormData] = useState({
-    nome: "",
-    codigoBarras: "",
-    categoriaId: "",
-    preco: "",
-    fornecedor: "",
-    estoqueAtual: "",
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    formState: { errors },
+  } = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      TrackQtyOnHand: true,
+      Active: true,
+      Taxable: true,
+      InvStartDate: new Date().toISOString().split("T")[0],
+    },
   })
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
-  }
+  const trackQtyOnHand = watch("TrackQtyOnHand")
+  const active = watch("Active")
+  const taxable = watch("Taxable")
 
-  const handleSelectChange = (value: string) => {
-    setFormData((prev) => ({ ...prev, categoriaId: value }))
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const onSubmit = async (data: FormValues) => {
     setIsSubmitting(true)
 
     try {
-      //chamada de API
-      const response = await api.post("/produto", formData)
+      const response = await fetch("/api/produtos", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      })
 
-      if (response.status === 201) {
-        toast(`${formData.nome} foi adicionado ao sistema.`)
-        router.push("/produtos")
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error?.Fault?.Error?.[0]?.Message || "Erro ao cadastrar produto")
       }
 
+      const produto = await response.json()
+
+      toast.success("Produto cadastrado com sucesso!", {
+        description: `${produto.Name} foi adicionado ao QuickBooks.`,
+      })
+
+      router.push("/produtos")
     } catch (error) {
-      toast("Ocorreu um erro ao processar sua solicitação. Tente novamente.")
+      console.error("Erro ao cadastrar produto:", error)
+      toast.error("Erro ao cadastrar produto", {
+        description: error instanceof Error ? error.message : "Tente novamente.",
+      })
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  const generateBarcode = () => {
-    // Gera um código de barras aleatório
-    const randomCode = Math.floor(Math.random() * 10000000000)
-      .toString()
-      .padStart(10, "0")
-    setFormData((prev) => ({ ...prev, codigoBarras: randomCode }))
-  }
-
   return (
-    <div className="space-y-6">
-      <div className="flex items-center">
+    <div className="container mx-auto py-6 space-y-6">
+      <div className="flex items-center gap-4">
         <Link href="/produtos">
-          <Button variant="ghost" size="sm" className="mr-2">
+          <Button variant="ghost" size="sm">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Voltar
           </Button>
         </Link>
-        <h1 className="text-3xl font-bold tracking-tight">Cadastro de Produto</h1>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Cadastro de Produto</h1>
+          <p className="text-muted-foreground">Criar novo item no QuickBooks</p>
+        </div>
       </div>
 
-      <Card>
-        <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit(onSubmit)}>
+        <Card>
           <CardHeader>
             <CardTitle>Informações do Produto</CardTitle>
-            <CardDescription>Preencha os dados do novo produto</CardDescription>
+            <CardDescription>Preencha os dados do produto para cadastro no QuickBooks</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="nome">Nome do Produto</Label>
+                <Label htmlFor="Name">Nome do Produto *</Label>
+                <Input id="Name" placeholder="Ex: Garden Supplies" {...register("Name")} />
+                {errors.Name && <p className="text-sm text-destructive">{errors.Name.message}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="InvStartDate">Data de Início do Inventário *</Label>
+                <Input id="InvStartDate" type="date" {...register("InvStartDate")} />
+                {errors.InvStartDate && <p className="text-sm text-destructive">{errors.InvStartDate.message}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="QtyOnHand">Quantidade em Estoque *</Label>
+                <Input id="QtyOnHand" type="number" min="0" placeholder="0" {...register("QtyOnHand")} />
+                {errors.QtyOnHand && <p className="text-sm text-destructive">{errors.QtyOnHand.message}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="UnitPrice">Preço de Venda (R$) *</Label>
+                <Input id="UnitPrice" type="number" step="0.01" min="0" placeholder="0.00" {...register("UnitPrice")} />
+                {errors.UnitPrice && <p className="text-sm text-destructive">{errors.UnitPrice.message}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="PurchaseCost">Custo de Compra (R$) *</Label>
                 <Input
-                  id="nome"
-                  name="nome"
-                  placeholder="Digite o nome do produto"
-                  value={formData.nome}
-                  onChange={handleChange}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="codigoBarras">Código de Barras</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="codigoBarras"
-                    name="codigoBarras"
-                    placeholder="Digite ou gere o código de barras"
-                    value={formData.codigoBarras}
-                    onChange={handleChange}
-                    required
-                  />
-                  <Button type="button" variant="outline" onClick={generateBarcode}>
-                    <Barcode className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="categoriaId">Categoria</Label>
-                <Select onValueChange={handleSelectChange} required>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione a categoria" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-black">
-                    {
-                      listCategory.length >= 1 && (
-                        listCategory.map((item) => (
-                          <SelectItem key={item.nome} value={item.id.toString()}>{item.nome}</SelectItem>
-                        ))
-                      )
-                    }
-                    {
-                      listCategory.length <= 0 && (<SelectItem value="1" disabled>Não tem categoria cadastrada</SelectItem>)
-                    }
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="preco">Preço (R$)</Label>
-                <Input
-                  id="preco"
-                  name="preco"
+                  id="PurchaseCost"
                   type="number"
                   step="0.01"
+                  min="0"
                   placeholder="0.00"
-                  value={formData.preco}
-                  onChange={handleChange}
-                  required
+                  {...register("PurchaseCost")}
                 />
+                {errors.PurchaseCost && <p className="text-sm text-destructive">{errors.PurchaseCost.message}</p>}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="Description">Descrição</Label>
+                <Input id="Description" placeholder="Descrição do produto" {...register("Description")} />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="fornecedor">Fornecedor</Label>
-                <Input
-                  id="fornecedor"
-                  name="fornecedor"
-                  placeholder="Nome do fornecedor"
-                  value={formData.fornecedor}
-                  onChange={handleChange}
-                  required
+                <Label htmlFor="PurchaseDesc">Descrição de Compra</Label>
+                <Input id="PurchaseDesc" placeholder="Descrição para compras" {...register("PurchaseDesc")} />
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="TrackQtyOnHand"
+                  checked={trackQtyOnHand}
+                  onCheckedChange={(checked) => setValue("TrackQtyOnHand", !!checked)}
                 />
+                <Label htmlFor="TrackQtyOnHand" className="cursor-pointer">
+                  Rastrear Quantidade em Estoque
+                </Label>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="estoqueAtual">Quantidade em Estoque</Label>
-                <Input
-                  id="estoqueAtual"
-                  name="estoqueAtual"
-                  type="number"
-                  placeholder="0"
-                  value={formData.estoqueAtual}
-                  onChange={handleChange}
-                  required
+              <div className="flex items-center space-x-2">
+                <Checkbox id="Active" checked={active} onCheckedChange={(checked) => setValue("Active", !!checked)} />
+                <Label htmlFor="Active" className="cursor-pointer">
+                  Produto Ativo
+                </Label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="Taxable"
+                  checked={taxable}
+                  onCheckedChange={(checked) => setValue("Taxable", !!checked)}
                 />
+                <Label htmlFor="Taxable" className="cursor-pointer">
+                  Produto Tributável
+                </Label>
               </div>
             </div>
           </CardContent>
           <CardFooter className="flex justify-between">
             <Link href="/produtos">
-              <Button variant="outline">Cancelar</Button>
+              <Button variant="outline" type="button">
+                Cancelar
+              </Button>
             </Link>
             <Button type="submit" disabled={isSubmitting}>
               {isSubmitting ? (
-                "Salvando..."
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Cadastrando...
+                </>
               ) : (
                 <>
                   <Save className="mr-2 h-4 w-4" />
@@ -204,9 +211,8 @@ export default function CadastroProduto() {
               )}
             </Button>
           </CardFooter>
-        </form>
-      </Card>
+        </Card>
+      </form>
     </div>
   )
 }
-

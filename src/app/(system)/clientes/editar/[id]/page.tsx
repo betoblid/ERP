@@ -65,7 +65,7 @@ export default function EditarClientePage() {
     const fetchCliente = async () => {
       setIsLoading(true)
       try {
-        const response = await api.get(`/cliente/${clienteId}`)
+        const response = await api.get(`/clientes/${clienteId}`)
         const clienteData = response.data
 
         setCliente(clienteData)
@@ -81,7 +81,7 @@ export default function EditarClientePage() {
         })
       } catch (error) {
         console.error("Erro ao carregar cliente:", error)
-        toast("Não foi possível carregar os dados do cliente.")
+        toast( "Não foi possível carregar os dados do cliente.")
         router.push("/clientes")
       } finally {
         setIsLoading(false)
@@ -97,8 +97,8 @@ export default function EditarClientePage() {
     try {
       await api.put(`/clientes/${clienteId}`, values)
 
-      toast( `Os dados de ${values.nome} foram atualizados.`)
-      
+      toast("Cliente atualizado com sucesso!")
+
       router.push("/clientes")
     } catch (error) {
       console.error("Erro ao atualizar cliente:", error)

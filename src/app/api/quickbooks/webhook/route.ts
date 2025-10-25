@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { QuickBooksSyncManager } from "@/lib/quickbooks/sync-manager"
 import { PrismaClient } from "@prisma/client"
 import crypto from "crypto"
 
@@ -6,55 +7,54 @@ const prisma = new PrismaClient()
 
 export async function POST(request: Request) {
   try {
-    const payload = await request.text()
     const signature = request.headers.get("intuit-signature")
+    const body = await request.text()
 
-    // Verify webhook signature
     const webhookToken = process.env.QUICKBOOKS_WEBHOOK_TOKEN
+
     if (webhookToken && signature) {
-      const hash = crypto.createHmac("sha256", webhookToken).update(payload).digest("base64")
+      const hash = crypto.createHmac("sha256", webhookToken).update(body).digest("base64")
 
       if (hash !== signature) {
-        console.error("Invalid webhook signature")
-        return NextResponse.json({ error: "Invalid signature" }, { status: 401 })
+        console.error("Assinatura do webhook inválida")
+        return NextResponse.json({ error: "Assinatura inválida" }, { status: 401 })
       }
     }
 
-    const data = JSON.parse(payload)
-    console.log("Webhook received:", data)
+    const payload = JSON.parse(body)
 
-    // Process webhook events
-    for (const event of data.eventNotifications || []) {
-      const realmId = event.realmId
-      const dataChangeEvent = event.dataChangeEvent
+    console.log("Webhook recebido:", payload)
 
-      if (!dataChangeEvent) continue
+    const config = await prisma.quickBooksConfig.findFirst({
+      orderBy: { createdAt: "desc" },
+    })
 
-      for (const entity of dataChangeEvent.entities || []) {
-        const entityName = entity.name
-        const entityId = entity.id
-        const operation = entity.operation
+    if (!config) {
+      return NextResponse.json({ error: "QuickBooks não configurado" }, { status: 400 })
+    }
 
-        console.log(`Webhook event: ${operation} on ${entityName} with ID ${entityId}`)
+    const syncManager = new QuickBooksSyncManager({
+      realmId: config.realmId,
+      accessToken: config.accessToken,
+      refreshToken: config.refreshToken,
+      expiresIn: Math.floor((config.expiresAt.getTime() - Date.now()) / 1000),
+    })
 
-        // Log webhook event
-        await prisma.syncLog.create({
-          data: {
-            entityType: entityName.toLowerCase(),
-            entityId: 0,
-            action: operation.toLowerCase(),
-            status: "success",
-            quickbooksId: entityId,
-            errorMessage: "Webhook event received",
-          },
-        })
+    for (const event of payload.eventNotifications) {
+      for (const entity of event.dataChangeEvent.entities) {
+        console.log(`Processando evento: ${entity.name} (${entity.operation})`)
+
+        if (entity.name === "Customer") {
+        } else if (entity.name === "Item") {
+        } else if (entity.name === "Invoice") {
+        }
       }
     }
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error("Webhook error:", error)
-    return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 })
+    console.error("Erro ao processar webhook:", error)
+    return NextResponse.json({ error: "Erro interno" }, { status: 500 })
   } finally {
     await prisma.$disconnect()
   }
